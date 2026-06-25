@@ -1,0 +1,543 @@
+(function (root, factory) {
+    if (typeof module === "object" && module.exports) {
+        module.exports = factory();
+    } else {
+        root.RiscCpuCore = factory();
+    }
+}(typeof self !== "undefined" ? self : this, function () {
+    "use strict";
+
+    const INSTR_WIDTH = 4;
+    const MEMORY_SIZE = 256;
+    const NUM_REGISTERS = 8;
+    const EXECUTION_LIMIT = 10000;
+
+    const OPCODES = Object.freeze({
+        NOP: 0,
+        LOAD: 1,
+        STORE: 2,
+        MOVI: 3,
+        ADD: 4,
+        SUB: 5,
+        JMP: 6,
+        BEQ: 7,
+        BNE: 8,
+        HALT: 9
+    });
+
+    const OPCODE_NAMES = Object.freeze(Object.fromEntries(
+        Object.entries(OPCODES).map(([name, value]) => [value, name])
+    ));
+
+    const EXAMPLES = Object.freeze({
+        add_two_numbers: `; Compute 5 + 7 and store the result in MEM[250].
+MOVI R1, 5
+MOVI R2, 7
+ADD R3, R1, R2
+STORE R3, 250
+HALT
+`,
+        sum_1_to_10: `; Sum integers 1 through 10 and store 55 in MEM[250].
+MOVI R1, 1      ; counter
+MOVI R2, 10     ; limit
+MOVI R3, 0      ; running sum
+MOVI R4, 1      ; increment
+
+loop:
+ADD R3, R3, R1
+BEQ R1, R2, done
+ADD R1, R1, R4
+JMP loop
+
+done:
+STORE R3, 250
+HALT
+`,
+        fibonacci_10_terms: `; Sum the first 10 Fibonacci terms: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34.
+; The expected result is 88 in MEM[250].
+MOVI R1, 0      ; current Fibonacci term
+MOVI R2, 1      ; next Fibonacci term
+MOVI R3, 0      ; running sum
+MOVI R4, 10     ; remaining terms
+MOVI R5, 0      ; zero constant
+MOVI R6, 1      ; decrement value
+
+loop:
+BEQ R4, R5, done
+ADD R3, R3, R1
+ADD R7, R1, R2
+MOVI R1, 0
+ADD R1, R1, R2
+MOVI R2, 0
+ADD R2, R2, R7
+SUB R4, R4, R6
+JMP loop
+
+done:
+STORE R3, 250
+HALT
+`
+    });
+
+    class AssemblyError extends Error {
+        constructor(lineNumber, message) {
+            super(lineNumber ? `line ${lineNumber}: ${message}` : message);
+            this.name = "AssemblyError";
+            this.lineNumber = lineNumber;
+        }
+    }
+
+    class RuntimeError extends Error {
+        constructor(pc, message) {
+            super(`PC ${pc}: ${message}`);
+            this.name = "RuntimeError";
+            this.pc = pc;
+        }
+    }
+
+    function stripComment(line) {
+        const commentIndex = line.indexOf(";");
+        return (commentIndex >= 0 ? line.slice(0, commentIndex) : line).trim();
+    }
+
+    function tokenize(line) {
+        return line.split(/[\s,]+/).filter(Boolean);
+    }
+
+    function parseInteger(text, lineNumber, description) {
+        if (!/^[+-]?(?:0x[0-9a-fA-F]+|\d+)$/.test(text)) {
+            throw new AssemblyError(lineNumber, `invalid ${description} '${text}'`);
+        }
+        const value = Number.parseInt(text, 0);
+        if (!Number.isSafeInteger(value)) {
+            throw new AssemblyError(lineNumber, `invalid ${description} '${text}'`);
+        }
+        return value;
+    }
+
+    function validateRegisterNumber(reg, lineNumber, text) {
+        if (!Number.isInteger(reg) || reg < 0 || reg >= NUM_REGISTERS) {
+            throw new AssemblyError(lineNumber, `invalid register '${text}'`);
+        }
+    }
+
+    function parseRegister(text, lineNumber) {
+        const match = /^R(\d+)$/i.exec(text);
+        if (!match) {
+            throw new AssemblyError(lineNumber, `invalid register '${text}'`);
+        }
+        const reg = Number.parseInt(match[1], 10);
+        validateRegisterNumber(reg, lineNumber, text);
+        return reg;
+    }
+
+    function validateAddress(addr, lineNumber) {
+        if (!Number.isInteger(addr) || addr < 0 || addr >= MEMORY_SIZE) {
+            throw new AssemblyError(lineNumber, `invalid memory address '${addr}'`);
+        }
+    }
+
+    function validateTarget(target, lineNumber) {
+        if (!Number.isInteger(target) || target < 0 || target > MEMORY_SIZE - INSTR_WIDTH || target % INSTR_WIDTH !== 0) {
+            throw new AssemblyError(
+                lineNumber,
+                `invalid branch target ${target} (must be 0-${MEMORY_SIZE - INSTR_WIDTH} and divisible by ${INSTR_WIDTH})`
+            );
+        }
+    }
+
+    function validateLabel(name, lineNumber) {
+        if (!name) {
+            throw new AssemblyError(lineNumber, "empty label");
+        }
+        if (name.length > 63) {
+            throw new AssemblyError(lineNumber, `label '${name}' is too long (max 63 characters)`);
+        }
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+            throw new AssemblyError(
+                lineNumber,
+                `invalid label '${name}' (use letters, numbers, and underscores; do not start with a number)`
+            );
+        }
+    }
+
+    function expectedOperands(opcodeName) {
+        switch (opcodeName) {
+        case "NOP":
+        case "HALT":
+            return 0;
+        case "JMP":
+            return 1;
+        case "LOAD":
+        case "STORE":
+        case "MOVI":
+            return 2;
+        case "ADD":
+        case "SUB":
+        case "BEQ":
+        case "BNE":
+            return 3;
+        default:
+            return -1;
+        }
+    }
+
+    function parseLines(source) {
+        return source.split(/\r?\n/).map((raw, index) => ({
+            raw,
+            lineNumber: index + 1,
+            clean: stripComment(raw)
+        }));
+    }
+
+    function splitLabel(clean, lineNumber) {
+        const colonIndex = clean.indexOf(":");
+        if (colonIndex < 0) {
+            return { label: null, rest: clean };
+        }
+        const label = clean.slice(0, colonIndex).trim();
+        validateLabel(label, lineNumber);
+        return { label, rest: clean.slice(colonIndex + 1).trim() };
+    }
+
+    function resolveTarget(text, labels, lineNumber) {
+        if (labels.has(text)) {
+            const target = labels.get(text);
+            validateTarget(target, lineNumber);
+            return target;
+        }
+        const target = parseInteger(text, lineNumber, "branch target");
+        validateTarget(target, lineNumber);
+        return target;
+    }
+
+    function assemble(source) {
+        const labels = new Map();
+        const lines = parseLines(source);
+        let address = 0;
+
+        for (const line of lines) {
+            if (!line.clean) {
+                continue;
+            }
+            const { label, rest } = splitLabel(line.clean, line.lineNumber);
+            if (label) {
+                if (labels.has(label)) {
+                    throw new AssemblyError(line.lineNumber, `duplicate label '${label}'`);
+                }
+                labels.set(label, address);
+            }
+            if (rest) {
+                address += INSTR_WIDTH;
+                if (address > MEMORY_SIZE) {
+                    throw new AssemblyError(line.lineNumber, `program exceeds ${MEMORY_SIZE}-word memory`);
+                }
+            }
+        }
+
+        const words = [];
+        const listing = [];
+        address = 0;
+
+        for (const line of lines) {
+            if (!line.clean) {
+                continue;
+            }
+            const { rest } = splitLabel(line.clean, line.lineNumber);
+            if (!rest) {
+                continue;
+            }
+
+            const tokens = tokenize(rest);
+            const mnemonic = tokens[0].toUpperCase();
+            if (!(mnemonic in OPCODES)) {
+                throw new AssemblyError(line.lineNumber, `unknown opcode '${tokens[0]}'`);
+            }
+
+            const expected = expectedOperands(mnemonic);
+            const got = tokens.length - 1;
+            if (got !== expected) {
+                throw new AssemblyError(line.lineNumber, `${mnemonic} expects ${expected} operand(s), got ${got}`);
+            }
+
+            let a = 0;
+            let b = 0;
+            let c = 0;
+
+            switch (mnemonic) {
+            case "LOAD":
+            case "STORE":
+                a = parseRegister(tokens[1], line.lineNumber);
+                b = parseInteger(tokens[2], line.lineNumber, "memory address");
+                validateAddress(b, line.lineNumber);
+                break;
+            case "MOVI":
+                a = parseRegister(tokens[1], line.lineNumber);
+                b = parseInteger(tokens[2], line.lineNumber, "immediate");
+                break;
+            case "ADD":
+            case "SUB":
+                a = parseRegister(tokens[1], line.lineNumber);
+                b = parseRegister(tokens[2], line.lineNumber);
+                c = parseRegister(tokens[3], line.lineNumber);
+                break;
+            case "JMP":
+                a = resolveTarget(tokens[1], labels, line.lineNumber);
+                break;
+            case "BEQ":
+            case "BNE":
+                a = parseRegister(tokens[1], line.lineNumber);
+                b = parseRegister(tokens[2], line.lineNumber);
+                c = resolveTarget(tokens[3], labels, line.lineNumber);
+                break;
+            default:
+                break;
+            }
+
+            const instruction = [OPCODES[mnemonic], a, b, c];
+            words.push(...instruction);
+            listing.push({
+                address,
+                lineNumber: line.lineNumber,
+                source: line.raw.trim(),
+                mnemonic,
+                operands: [a, b, c],
+                words: instruction
+            });
+            address += INSTR_WIDTH;
+        }
+
+        if (words.length === 0) {
+            throw new AssemblyError(0, "program has no instructions");
+        }
+
+        return { words, listing, labels };
+    }
+
+    function opcodeName(opcode) {
+        return OPCODE_NAMES[opcode] || `UNKNOWN(${opcode})`;
+    }
+
+    function cloneArray(values) {
+        return values.slice();
+    }
+
+    class Cpu {
+        constructor(words) {
+            this.originalWords = cloneArray(words);
+            this.reset();
+        }
+
+        reset() {
+            this.memory = new Array(MEMORY_SIZE).fill(0);
+            for (let i = 0; i < this.originalWords.length; i += 1) {
+                this.memory[i] = this.originalWords[i];
+            }
+            this.registers = new Array(NUM_REGISTERS).fill(0);
+            this.pc = 0;
+            this.steps = 0;
+            this.halted = false;
+            this.fault = null;
+            this.lastChanges = { registers: [], memory: [] };
+        }
+
+        requireRegister(reg) {
+            if (!Number.isInteger(reg) || reg < 0 || reg >= NUM_REGISTERS) {
+                throw new RuntimeError(this.pc, `invalid register R${reg}`);
+            }
+        }
+
+        requireAddress(addr) {
+            if (!Number.isInteger(addr) || addr < 0 || addr >= MEMORY_SIZE) {
+                throw new RuntimeError(this.pc, `invalid memory address ${addr}`);
+            }
+        }
+
+        requireTarget(target) {
+            if (!Number.isInteger(target) || target < 0 || target > MEMORY_SIZE - INSTR_WIDTH || target % INSTR_WIDTH !== 0) {
+                throw new RuntimeError(this.pc, `invalid branch target ${target}`);
+            }
+        }
+
+        fetch() {
+            if (this.pc < 0 || this.pc > MEMORY_SIZE - INSTR_WIDTH || this.pc % INSTR_WIDTH !== 0) {
+                throw new RuntimeError(this.pc, `PC out of bounds or misaligned`);
+            }
+            return {
+                pc: this.pc,
+                opcode: this.memory[this.pc],
+                a: this.memory[this.pc + 1],
+                b: this.memory[this.pc + 2],
+                c: this.memory[this.pc + 3]
+            };
+        }
+
+        step() {
+            if (this.halted) {
+                return {
+                    halted: true,
+                    pc: this.pc,
+                    opcode: OPCODES.HALT,
+                    opcodeName: "HALT",
+                    changes: this.lastChanges
+                };
+            }
+            if (this.steps >= EXECUTION_LIMIT) {
+                throw new RuntimeError(this.pc, `execution limit of ${EXECUTION_LIMIT} steps reached`);
+            }
+
+            const beforeRegisters = cloneArray(this.registers);
+            const beforeMemory = cloneArray(this.memory);
+            const instr = this.fetch();
+            let nextPc = this.pc + INSTR_WIDTH;
+
+            switch (instr.opcode) {
+            case OPCODES.NOP:
+                break;
+            case OPCODES.LOAD:
+                this.requireRegister(instr.a);
+                this.requireAddress(instr.b);
+                this.registers[instr.a] = this.memory[instr.b];
+                break;
+            case OPCODES.STORE:
+                this.requireRegister(instr.a);
+                this.requireAddress(instr.b);
+                this.memory[instr.b] = this.registers[instr.a];
+                break;
+            case OPCODES.MOVI:
+                this.requireRegister(instr.a);
+                this.registers[instr.a] = instr.b;
+                break;
+            case OPCODES.ADD:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireRegister(instr.c);
+                this.registers[instr.a] = this.registers[instr.b] + this.registers[instr.c];
+                break;
+            case OPCODES.SUB:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireRegister(instr.c);
+                this.registers[instr.a] = this.registers[instr.b] - this.registers[instr.c];
+                break;
+            case OPCODES.JMP:
+                this.requireTarget(instr.a);
+                nextPc = instr.a;
+                break;
+            case OPCODES.BEQ:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireTarget(instr.c);
+                if (this.registers[instr.a] === this.registers[instr.b]) {
+                    nextPc = instr.c;
+                }
+                break;
+            case OPCODES.BNE:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireTarget(instr.c);
+                if (this.registers[instr.a] !== this.registers[instr.b]) {
+                    nextPc = instr.c;
+                }
+                break;
+            case OPCODES.HALT:
+                this.halted = true;
+                break;
+            default:
+                throw new RuntimeError(this.pc, `unknown opcode ${instr.opcode}`);
+            }
+
+            this.pc = nextPc;
+            this.steps += 1;
+            this.lastChanges = diffState(beforeRegisters, this.registers, beforeMemory, this.memory);
+
+            return {
+                ...instr,
+                opcodeName: opcodeName(instr.opcode),
+                nextPc,
+                halted: this.halted,
+                steps: this.steps,
+                changes: this.lastChanges
+            };
+        }
+
+        run(options = {}) {
+            const breakpoints = options.breakpoints || new Set();
+            const maxSteps = options.maxSteps || EXECUTION_LIMIT;
+            const events = [];
+
+            while (!this.halted && events.length < maxSteps) {
+                if (events.length > 0 && breakpoints.has(this.pc)) {
+                    break;
+                }
+                const event = this.step();
+                events.push(event);
+                if (!this.halted && breakpoints.has(this.pc)) {
+                    break;
+                }
+            }
+
+            return events;
+        }
+    }
+
+    function diffState(beforeRegisters, afterRegisters, beforeMemory, afterMemory) {
+        const registers = [];
+        const memory = [];
+        for (let i = 0; i < beforeRegisters.length; i += 1) {
+            if (beforeRegisters[i] !== afterRegisters[i]) {
+                registers.push(i);
+            }
+        }
+        for (let i = 0; i < beforeMemory.length; i += 1) {
+            if (beforeMemory[i] !== afterMemory[i]) {
+                memory.push(i);
+            }
+        }
+        return { registers, memory };
+    }
+
+    function formatInstruction(item) {
+        const [opcode, a, b, c] = item.words;
+        const name = opcodeName(opcode);
+        switch (name) {
+        case "NOP":
+        case "HALT":
+            return name;
+        case "LOAD":
+            return `LOAD R${a}, ${b}`;
+        case "STORE":
+            return `STORE R${a}, ${b}`;
+        case "MOVI":
+            return `MOVI R${a}, ${b}`;
+        case "ADD":
+            return `ADD R${a}, R${b}, R${c}`;
+        case "SUB":
+            return `SUB R${a}, R${b}, R${c}`;
+        case "JMP":
+            return `JMP ${a}`;
+        case "BEQ":
+            return `BEQ R${a}, R${b}, ${c}`;
+        case "BNE":
+            return `BNE R${a}, R${b}, ${c}`;
+        default:
+            return `${name} ${a}, ${b}, ${c}`;
+        }
+    }
+
+    return {
+        INSTR_WIDTH,
+        MEMORY_SIZE,
+        NUM_REGISTERS,
+        EXECUTION_LIMIT,
+        OPCODES,
+        OPCODE_NAMES,
+        EXAMPLES,
+        AssemblyError,
+        RuntimeError,
+        Cpu,
+        assemble,
+        formatInstruction,
+        opcodeName
+    };
+}));

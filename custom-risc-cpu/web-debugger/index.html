@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Custom RISC CPU Debugger</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="app-header">
+        <div>
+            <p class="eyebrow">Custom RISC CPU Simulator</p>
+            <h1>Interactive CPU Debugger</h1>
+        </div>
+        <div class="status-pill" id="statusText" data-kind="ok">Ready.</div>
+    </header>
+
+    <main class="workspace">
+        <section class="editor-panel" aria-label="Assembly editor">
+            <div class="toolbar">
+                <label>
+                    Program
+                    <select id="exampleSelect"></select>
+                </label>
+                <div class="button-row">
+                    <button id="assembleBtn">Assemble</button>
+                    <button id="resetBtn">Reset</button>
+                    <button id="stepBtn">Step</button>
+                    <button id="runBtn">Run</button>
+                    <button id="pauseBtn">Pause</button>
+                    <button id="exportBtn">Export .bin</button>
+                </div>
+            </div>
+            <textarea id="sourceEditor" spellcheck="false" aria-label="Assembly source"></textarea>
+        </section>
+
+        <section class="machine-panel" aria-label="CPU state">
+            <div class="stats-grid">
+                <div><span>PC</span><strong id="pcValue">--</strong></div>
+                <div><span>Steps</span><strong id="stepValue">--</strong></div>
+                <div><span>State</span><strong id="haltValue">--</strong></div>
+                <div><span>MEM[250]</span><strong id="resultValue">--</strong></div>
+            </div>
+
+            <div class="section-title">
+                <h2>Registers</h2>
+            </div>
+            <div id="registerGrid" class="register-grid"></div>
+
+            <div class="section-title">
+                <h2>Instruction Listing</h2>
+                <span>Click circles to toggle breakpoints</span>
+            </div>
+            <div class="listing-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>BP</th>
+                            <th>PC</th>
+                            <th>Line</th>
+                            <th>Instruction</th>
+                            <th>Words</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listingBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="memory-panel" aria-label="Memory state">
+            <div class="section-title">
+                <h2>Memory</h2>
+                <span>Blue = current instruction, green = result, amber = changed</span>
+            </div>
+            <div id="memoryGrid" class="memory-grid"></div>
+        </section>
+
+        <section class="output-panel" aria-label="Trace and machine code">
+            <div>
+                <div class="section-title">
+                    <h2>Trace</h2>
+                </div>
+                <div id="traceLog" class="trace-log"></div>
+            </div>
+            <div>
+                <div class="section-title">
+                    <h2>Machine Code</h2>
+                </div>
+                <textarea id="machineCode" readonly spellcheck="false"></textarea>
+            </div>
+        </section>
+    </main>
+
+    <script src="cpu_core.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
