@@ -372,6 +372,15 @@ tr.breakpoint td:first-child {
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.trace-empty {
+    display: grid;
+    min-height: 250px;
+    place-items: center;
+    padding: 24px;
+    color: #93a4ba;
+    text-align: center;
+}
+
 @media (max-width: 1100px) {
     .workspace {
         grid-template-columns: 1fr;

@@ -273,6 +273,14 @@ function renderListing() {
 
 function renderTrace() {
     els.traceLog.innerHTML = "";
+    if (state.trace.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "trace-empty";
+        empty.textContent = "No instructions executed yet. Click Step or Run to populate the trace.";
+        els.traceLog.appendChild(empty);
+        return;
+    }
+
     for (const event of state.trace.slice(0, 80)) {
         const line = document.createElement("div");
         const changeText = describeChanges(event.changes);

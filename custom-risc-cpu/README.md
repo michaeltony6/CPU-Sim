@@ -150,6 +150,8 @@ python3 -m http.server 8000
 
 Then visit `http://localhost:8000`. The debugger can assemble source, step instructions, run until halt, pause at breakpoints, highlight changed registers/memory, show trace output, and export `.bin` machine code.
 
+![Interactive CPU Debugger](docs/images/web-debugger.png)
+
 Run the default example:
 
 ```sh

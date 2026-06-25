@@ -18,6 +18,8 @@ Features:
 - Highlight changed registers and memory after each instruction.
 - Export newline-separated integer `.bin` machine code.
 
+![Interactive CPU Debugger](../docs/images/web-debugger.png)
+
 Run the JavaScript core tests:
 
 ```sh

@@ -68,6 +68,8 @@ python3 -m http.server 8000
 
 Then visit `http://localhost:8000`.
 
+![Interactive CPU Debugger](custom-risc-cpu/docs/images/web-debugger.png)
+
 Build and run the C simulator:
 
 ```sh
