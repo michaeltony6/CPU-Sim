@@ -3,6 +3,8 @@
 #include "registers.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,8 +68,9 @@ static int tokenize(char *line, char *tokens[MAX_TOKENS])
 static bool parse_int(const char *text, int *value)
 {
     char *end = NULL;
+    errno = 0;
     long parsed = strtol(text, &end, 0);
-    if (end == text || *end != '\0') {
+    if (end == text || *end != '\0' || errno == ERANGE || parsed < INT_MIN || parsed > INT_MAX) {
         return false;
     }
     *value = (int)parsed;
@@ -136,10 +139,35 @@ static int find_label(const char *name)
     return -1;
 }
 
+static bool label_name_is_valid(const char *name)
+{
+    if (!(isalpha((unsigned char)name[0]) || name[0] == '_')) {
+        return false;
+    }
+
+    for (size_t i = 1; name[i] != '\0'; i++) {
+        if (!(isalnum((unsigned char)name[i]) || name[i] == '_')) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static bool add_label(const char *name, int address, int line_no)
 {
     if (name[0] == '\0') {
         fprintf(stderr, "line %d: empty label\n", line_no);
+        return false;
+    }
+    if (strlen(name) >= sizeof(labels[0].name)) {
+        fprintf(stderr, "line %d: label '%s' is too long (max %zu characters)\n",
+                line_no, name, sizeof(labels[0].name) - 1);
+        return false;
+    }
+    if (!label_name_is_valid(name)) {
+        fprintf(stderr, "line %d: invalid label '%s' (use letters, numbers, and underscores; do not start with a number)\n",
+                line_no, name);
         return false;
     }
     if (find_label(name) >= 0) {
@@ -212,15 +240,25 @@ static bool first_pass(const char *input_path, int *instruction_count)
     return true;
 }
 
+static bool validate_branch_target(int target, int line_no)
+{
+    if (target < 0 || target > MEMORY_SIZE - INSTR_WIDTH || target % INSTR_WIDTH != 0) {
+        fprintf(stderr, "line %d: invalid branch target %d (must be 0-%d and divisible by %d)\n",
+                line_no, target, MEMORY_SIZE - INSTR_WIDTH, INSTR_WIDTH);
+        return false;
+    }
+    return true;
+}
+
 static bool parse_label_or_address(const char *text, int *target, int line_no)
 {
     int label_addr = find_label(text);
     if (label_addr >= 0) {
         *target = label_addr;
-        return true;
+        return validate_branch_target(*target, line_no);
     }
     if (parse_int(text, target)) {
-        return true;
+        return validate_branch_target(*target, line_no);
     }
 
     fprintf(stderr, "line %d: unknown label '%s'\n", line_no, text);

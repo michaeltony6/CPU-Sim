@@ -2,6 +2,8 @@
 #include "memory.h"
 #include "registers.h"
 
+#include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,15 +20,23 @@ static bool load_program(const char *path, int memory[MEMORY_SIZE], int *program
         return false;
     }
 
-    int value = 0;
+    char token[64];
     int count = 0;
-    while (fscanf(file, "%d", &value) == 1) {
+    while (fscanf(file, "%63s", token) == 1) {
+        char *end = NULL;
+        errno = 0;
+        long parsed = strtol(token, &end, 0);
+        if (end == token || *end != '\0' || errno == ERANGE || parsed < INT_MIN || parsed > INT_MAX) {
+            fprintf(stderr, "error: invalid integer token '%s' in '%s'\n", token, path);
+            fclose(file);
+            return false;
+        }
         if (count >= MAX_PROGRAM_WORDS) {
             fprintf(stderr, "error: program is larger than %d memory words\n", MAX_PROGRAM_WORDS);
             fclose(file);
             return false;
         }
-        memory[count++] = value;
+        memory[count++] = (int)parsed;
     }
 
     if (ferror(file)) {

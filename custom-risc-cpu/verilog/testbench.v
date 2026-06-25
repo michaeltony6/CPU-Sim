@@ -3,15 +3,20 @@
 //   vvp cpu_tb
 //   gtkwave dump.vcd
 module testbench;
+    parameter PROGRAM_FILE = "programs/add_two_numbers.mem";
+    parameter EXPECTED_MEM250 = 12;
+
     reg clk;
     reg reset;
     wire halted;
+    wire fault;
     integer cycles;
 
-    cpu #(.PROGRAM_FILE("programs/add_two_numbers.mem")) dut(
+    cpu #(.PROGRAM_FILE(PROGRAM_FILE)) dut(
         .clk(clk),
         .reset(reset),
-        .halted(halted)
+        .halted(halted),
+        .fault(fault)
     );
 
     initial begin
@@ -30,8 +35,16 @@ module testbench;
         if (!reset) begin
             cycles = cycles + 1;
             if (halted) begin
+                if (fault) begin
+                    $display("error: CPU halted with a fault");
+                    $finish;
+                end
                 $display("CPU halted after %0d cycles", cycles);
                 $display("MEM[250] = %0d", dut.data_memory.mem[250]);
+                if (dut.data_memory.mem[250] !== EXPECTED_MEM250) begin
+                    $display("error: expected MEM[250] = %0d", EXPECTED_MEM250);
+                    $finish;
+                end
                 $finish;
             end
             if (cycles > 100) begin

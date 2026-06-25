@@ -9,6 +9,7 @@ This repository includes:
 - Example assembly programs for arithmetic, loops, and Fibonacci logic.
 - A matching Verilog implementation of the same instruction set.
 - An Icarus Verilog testbench that generates a GTKWave-compatible VCD file.
+- Automated C and Verilog regression tests for core programs and invalid-input handling.
 
 The main project lives in [`custom-risc-cpu/`](custom-risc-cpu/).
 
@@ -65,6 +66,12 @@ make
 make run PROG=programs/add_two_numbers
 ```
 
+Run the C regression tests:
+
+```sh
+make test
+```
+
 Run another example manually:
 
 ```sh
@@ -93,6 +100,12 @@ gtkwave dump.vcd
 
 The testbench loads `programs/add_two_numbers.mem`, executes the CPU, prints trace information, and writes `dump.vcd` for waveform inspection.
 
+Run the Verilog regression tests:
+
+```sh
+./tests.sh
+```
+
 ## Debugging Features
 
 The C simulator includes:
@@ -103,6 +116,8 @@ The C simulator includes:
 - Branch target validation.
 - Execution limit protection for infinite loops.
 - Final register and non-zero memory dumps.
+- Strict machine-code token parsing.
+- Verilog simulation fault detection for invalid operands, addresses, and PC values.
 
 These features make it easier to debug PC updates, branch logic, loop behavior, and memory/register state.
 
@@ -110,7 +125,7 @@ These features make it easier to debug PC updates, branch logic, loop behavior, 
 
 - Built a custom RISC-style CPU simulator in C with fetch-decode-execute control flow, branch handling, tracing, memory bounds checking, and register validation.
 - Implemented a two-pass assembler that converts labeled assembly programs into integer-based machine code with clear diagnostics for malformed input.
-- Designed a matching Verilog CPU implementation with ALU, register file, control unit, memory module, and waveform-generating Icarus Verilog testbench.
+- Designed and tested a matching Verilog CPU implementation with ALU, register file, control unit, memory module, fault detection, and waveform-generating Icarus Verilog testbench.
 
 ## Full Documentation
 

@@ -5,8 +5,8 @@ module memory #(
 )(
     input clk,
     input write_enable,
-    input [7:0] instr_addr,
-    input [7:0] data_addr,
+    input [31:0] instr_addr,
+    input [31:0] data_addr,
     input [31:0] write_data,
     output [31:0] instr_word0,
     output [31:0] instr_word1,
@@ -44,14 +44,14 @@ module memory #(
         end
     end
 
-    assign instr_word0 = mem[instr_addr];
-    assign instr_word1 = mem[instr_addr + 8'd1];
-    assign instr_word2 = mem[instr_addr + 8'd2];
-    assign instr_word3 = mem[instr_addr + 8'd3];
-    assign read_data = mem[data_addr];
+    assign instr_word0 = (instr_addr <= 32'd252) ? mem[instr_addr] : 32'd9;
+    assign instr_word1 = (instr_addr <= 32'd252) ? mem[instr_addr + 32'd1] : 32'd0;
+    assign instr_word2 = (instr_addr <= 32'd252) ? mem[instr_addr + 32'd2] : 32'd0;
+    assign instr_word3 = (instr_addr <= 32'd252) ? mem[instr_addr + 32'd3] : 32'd0;
+    assign read_data = (data_addr <= 32'd255) ? mem[data_addr] : 32'd0;
 
     always @(posedge clk) begin
-        if (write_enable) begin
+        if (write_enable && data_addr <= 32'd255) begin
             mem[data_addr] <= write_data;
         end
     end

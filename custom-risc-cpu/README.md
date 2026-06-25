@@ -22,6 +22,7 @@ custom-risc-cpu/
     cpu_sim.c
     assembler.c
     Makefile
+    tests.sh
     programs/
       add_two_numbers.asm
       sum_1_to_10.asm
@@ -33,8 +34,13 @@ custom-risc-cpu/
     memory.v
     control.v
     testbench.v
+    fault_testbench.v
+    tests.sh
     programs/
       add_two_numbers.mem
+      sum_1_to_10.mem
+      fibonacci_10_terms.mem
+      invalid_register.mem
 ```
 
 ## Architecture Overview
@@ -90,6 +96,7 @@ Safety features include:
 - Word-aligned jump target validation.
 - A 10,000-step execution limit to prevent accidental infinite loops.
 - Optional instruction tracing with `--trace`.
+- Strict `.bin` parsing so malformed machine-code files are rejected instead of partially loaded.
 
 ## Assembler
 
@@ -104,6 +111,8 @@ It supports:
 - Comments beginning with `;`.
 - Comma-separated or whitespace-separated operands.
 - Clear errors for unknown opcodes, invalid registers, invalid memory addresses, malformed instructions, and missing labels.
+- Label validation for length and allowed characters.
+- Branch target validation for numeric jump/branch addresses.
 
 Example assembly:
 
@@ -141,6 +150,12 @@ Clean generated files:
 
 ```sh
 make clean
+```
+
+Run the C simulator and assembler test suite:
+
+```sh
+make test
 ```
 
 ## Sample Output
@@ -184,6 +199,7 @@ The Verilog CPU maps directly to the C simulator:
 - `register_file.v` implements eight 32-bit registers.
 - `memory.v` implements 256-word shared instruction/data memory.
 - `testbench.v` loads `programs/add_two_numbers.mem`, runs the CPU, and generates `dump.vcd`.
+- `fault_testbench.v` verifies that invalid operands halt the CPU with a visible fault.
 
 Run with Icarus Verilog:
 
@@ -196,6 +212,15 @@ gtkwave dump.vcd
 
 The Verilog testbench prints the PC, instruction fields, register read values, and `MEM[250]` during simulation. It also stops after a cycle limit to catch broken branch logic.
 
+Run the Verilog regression tests:
+
+```sh
+cd custom-risc-cpu/verilog
+./tests.sh
+```
+
+The Verilog implementation includes simulation-time fault checks for invalid register numbers, invalid memory addresses, invalid branch targets, and invalid PC values. The `$fopen`, `$fscanf`, `$display`, and VCD dump features are intended for simulation and debugging rather than direct synthesis.
+
 ## Debugging Notes
 
 - PC updates are the most important behavior to inspect. Normal instructions advance by 4 words, while `JMP`, `BEQ`, and `BNE` replace `PC` with a label target.
@@ -203,9 +228,16 @@ The Verilog testbench prints the PC, instruction fields, register read values, a
 - `--trace` is useful when checking whether a loop exits on the expected iteration.
 - Shared instruction/data memory means storing into low addresses can overwrite a running program. The example programs store results at `MEM[250]` to avoid that.
 - If a program hangs, check label placement, branch condition registers, and whether the loop counter changes before the branch target repeats.
+- If the Verilog CPU halts with `fault=1`, inspect the decoded instruction fields for an invalid register number, memory address, branch target, or PC.
+
+## Known Limitations
+
+- The ISA is intentionally tiny: there are no stack operations, interrupts, byte-addressed loads, or pipeline stages.
+- The Verilog memory loader and trace output are simulation conveniences, not a complete FPGA memory-initialization flow.
+- The C simulator and Verilog CPU share behavior for the supported ISA, but the C simulator remains the reference model for detailed error messages.
 
 ## Resume Bullets
 
 - Built a custom RISC-style CPU simulator in C with fetch-decode-execute control flow, register/memory validation, branch handling, tracing, and infinite-loop protection.
 - Implemented a two-pass assembler that translates labeled assembly programs into integer machine code with clear diagnostics for malformed source input.
-- Designed a matching Verilog CPU datapath with ALU, register file, control unit, shared memory, and Icarus Verilog testbench with GTKWave waveform generation.
+- Designed and tested a matching Verilog CPU datapath with ALU, register file, control unit, shared memory, fault detection, and GTKWave waveform generation.
