@@ -6,11 +6,13 @@ This repository includes:
 
 - A C-based CPU simulator with fetch-decode-execute behavior.
 - A lightweight two-pass assembler for `.asm` source files.
+- A disassembler for inspecting integer `.bin` machine-code files.
 - Example assembly programs for arithmetic, loops, and Fibonacci logic.
 - A matching Verilog implementation of the same instruction set.
 - An Icarus Verilog testbench that generates a GTKWave-compatible VCD file.
 - Automated C and Verilog regression tests for core programs and invalid-input handling.
 - An interactive browser debugger for assembling, stepping, tracing, and visualizing CPU state.
+- An expanded ISA with bitwise operations, shifts, register-indirect memory, signed branches, stack operations, subroutine calls, flags, and memory-mapped output.
 
 The main project lives in [`custom-risc-cpu/`](custom-risc-cpu/).
 
@@ -56,6 +58,22 @@ Each assembly instruction is assembled into four integers. The simulator loads t
 | `BEQ` | `BEQ rs1, rs2, label` | Branch if equal |
 | `BNE` | `BNE rs1, rs2, label` | Branch if not equal |
 | `HALT` | `HALT` | Stop execution |
+| `ADDI` | `ADDI rd, rs, imm` | Add immediate |
+| `AND` | `AND rd, rs1, rs2` | Bitwise AND |
+| `OR` | `OR rd, rs1, rs2` | Bitwise OR |
+| `XOR` | `XOR rd, rs1, rs2` | Bitwise XOR |
+| `SHL` | `SHL rd, rs, imm` | Shift left |
+| `SHR` | `SHR rd, rs, imm` | Logical shift right |
+| `LOADR` | `LOADR rd, addrReg` | Load using a register-held address |
+| `STORER` | `STORER rs, addrReg` | Store using a register-held address |
+| `JLT` | `JLT rs1, rs2, label` | Signed branch if less than |
+| `JGT` | `JGT rs1, rs2, label` | Signed branch if greater than |
+| `PUSH` | `PUSH rs` | Push register onto stack |
+| `POP` | `POP rd` | Pop stack into register |
+| `CALL` | `CALL label` | Push return address and jump |
+| `RET` | `RET` | Return from subroutine |
+
+`R7` is the stack pointer by convention. It starts at `256`, and stack operations pre-decrement before writing. `MEM[255]` is memory-mapped output for simple demo programs.
 
 ## Quick Start
 
@@ -91,6 +109,7 @@ Run another example manually:
 cd custom-risc-cpu/c-simulator
 ./assembler programs/sum_1_to_10.asm programs/sum_1_to_10.bin
 ./cpu_sim programs/sum_1_to_10.bin --trace
+./disassembler programs/sum_1_to_10.bin
 ```
 
 Expected example results:
@@ -100,6 +119,7 @@ Expected example results:
 | `add_two_numbers.asm` | `MEM[250] = 12` |
 | `sum_1_to_10.asm` | `MEM[250] = 55` |
 | `fibonacci_10_terms.asm` | `MEM[250] = 88` |
+| `isa_v2_demo.asm` | `MEM[250] = 20` |
 
 ## Verilog Simulation
 
@@ -133,6 +153,8 @@ The project includes both CLI and visual debugging:
 - Strict machine-code token parsing.
 - Verilog simulation fault detection for invalid operands, addresses, and PC values.
 - Browser-based stepping, breakpoints, register/memory highlighting, trace logging, and `.bin` export.
+- Flags for zero, negative, and carry/overflow-style arithmetic status.
+- `MEM[255]` memory-mapped output for simple I/O-style demos.
 
 These features make it easier to debug PC updates, branch logic, loop behavior, and memory/register state.
 
@@ -142,6 +164,7 @@ These features make it easier to debug PC updates, branch logic, loop behavior, 
 - Implemented a two-pass assembler that converts labeled assembly programs into integer-based machine code with clear diagnostics for malformed input.
 - Designed and tested a matching Verilog CPU implementation with ALU, register file, control unit, memory module, fault detection, and waveform-generating Icarus Verilog testbench.
 - Built an interactive browser debugger that assembles code, steps execution, manages breakpoints, highlights CPU state changes, and exports machine code.
+- Expanded the ISA with stack/subroutine support, register-indirect memory, signed branches, bitwise operations, shifts, condition flags, and memory-mapped output.
 
 ## Full Documentation
 

@@ -47,6 +47,12 @@ expect_sim_fail() {
 check_result add_two_numbers 12
 check_result sum_1_to_10 55
 check_result fibonacci_10_terms 88
+check_result isa_v2_demo 20
+
+./assembler programs/isa_v2_demo.asm "$tmp_dir/isa_v2_demo.bin" >/dev/null
+./disassembler "$tmp_dir/isa_v2_demo.bin" > "$tmp_dir/isa_v2_demo.disasm"
+grep 'ADDI R2, R1, 3' "$tmp_dir/isa_v2_demo.disasm" >/dev/null
+grep 'CALL 100' "$tmp_dir/isa_v2_demo.disasm" >/dev/null
 
 expect_assembler_fail bad_register 'MOVI R8, 1' 'invalid register'
 expect_assembler_fail bad_opcode 'NOPE R1, 1' 'unknown opcode'
@@ -54,6 +60,7 @@ expect_assembler_fail bad_label 'bad-label: HALT' 'invalid label'
 expect_assembler_fail unknown_label 'JMP missing' 'unknown label'
 expect_assembler_fail bad_target 'JMP 3' 'invalid branch target'
 expect_assembler_fail bad_address 'LOAD R1, 300' 'invalid memory address'
+expect_assembler_fail bad_shift 'SHL R1, R2, 32' 'invalid shift amount'
 
 expect_sim_fail bad_token '9
 oops' 'invalid integer token'

@@ -104,6 +104,20 @@ static int opcode_from_name(const char *name)
     if (strcmp(name, "BEQ") == 0) return OP_BEQ;
     if (strcmp(name, "BNE") == 0) return OP_BNE;
     if (strcmp(name, "HALT") == 0) return OP_HALT;
+    if (strcmp(name, "ADDI") == 0) return OP_ADDI;
+    if (strcmp(name, "AND") == 0) return OP_AND;
+    if (strcmp(name, "OR") == 0) return OP_OR;
+    if (strcmp(name, "XOR") == 0) return OP_XOR;
+    if (strcmp(name, "SHL") == 0) return OP_SHL;
+    if (strcmp(name, "SHR") == 0) return OP_SHR;
+    if (strcmp(name, "LOADR") == 0) return OP_LOADR;
+    if (strcmp(name, "STORER") == 0) return OP_STORER;
+    if (strcmp(name, "JLT") == 0) return OP_JLT;
+    if (strcmp(name, "JGT") == 0) return OP_JGT;
+    if (strcmp(name, "PUSH") == 0) return OP_PUSH;
+    if (strcmp(name, "POP") == 0) return OP_POP;
+    if (strcmp(name, "CALL") == 0) return OP_CALL;
+    if (strcmp(name, "RET") == 0) return OP_RET;
     return -1;
 }
 
@@ -112,17 +126,31 @@ static int expected_operands(int opcode)
     switch (opcode) {
     case OP_NOP:
     case OP_HALT:
+    case OP_RET:
         return 0;
     case OP_JMP:
+    case OP_CALL:
+    case OP_PUSH:
+    case OP_POP:
         return 1;
     case OP_LOAD:
     case OP_STORE:
     case OP_MOVI:
+    case OP_LOADR:
+    case OP_STORER:
         return 2;
     case OP_ADD:
     case OP_SUB:
     case OP_BEQ:
     case OP_BNE:
+    case OP_ADDI:
+    case OP_AND:
+    case OP_OR:
+    case OP_XOR:
+    case OP_SHL:
+    case OP_SHR:
+    case OP_JLT:
+    case OP_JGT:
         return 3;
     default:
         return -1;
@@ -250,6 +278,15 @@ static bool validate_branch_target(int target, int line_no)
     return true;
 }
 
+static bool validate_shift_amount(int amount, int line_no)
+{
+    if (amount < 0 || amount > 31) {
+        fprintf(stderr, "line %d: invalid shift amount %d (must be 0-31)\n", line_no, amount);
+        return false;
+    }
+    return true;
+}
+
 static bool parse_label_or_address(const char *text, int *target, int line_no)
 {
     int label_addr = find_label(text);
@@ -319,23 +356,64 @@ static bool emit_instruction(FILE *output, char *line, int line_no)
         break;
     case OP_ADD:
     case OP_SUB:
+    case OP_AND:
+    case OP_OR:
+    case OP_XOR:
         if (!parse_register(tokens[1], &a) || !parse_register(tokens[2], &b) || !parse_register(tokens[3], &c)) {
             fprintf(stderr, "line %d: invalid register operand\n", line_no);
             return false;
         }
         break;
+    case OP_ADDI:
+        if (!parse_register(tokens[1], &a) || !parse_register(tokens[2], &b)) {
+            fprintf(stderr, "line %d: invalid ADDI register operand\n", line_no);
+            return false;
+        }
+        if (!parse_int(tokens[3], &c)) {
+            fprintf(stderr, "line %d: invalid immediate '%s'\n", line_no, tokens[3]);
+            return false;
+        }
+        break;
+    case OP_SHL:
+    case OP_SHR:
+        if (!parse_register(tokens[1], &a) || !parse_register(tokens[2], &b)) {
+            fprintf(stderr, "line %d: invalid shift register operand\n", line_no);
+            return false;
+        }
+        if (!parse_int(tokens[3], &c) || !validate_shift_amount(c, line_no)) {
+            fprintf(stderr, "line %d: invalid shift amount '%s'\n", line_no, tokens[3]);
+            return false;
+        }
+        break;
+    case OP_LOADR:
+    case OP_STORER:
+        if (!parse_register(tokens[1], &a) || !parse_register(tokens[2], &b)) {
+            fprintf(stderr, "line %d: invalid register-indirect operand\n", line_no);
+            return false;
+        }
+        break;
     case OP_JMP:
+    case OP_CALL:
         if (!parse_label_or_address(tokens[1], &a, line_no)) {
             return false;
         }
         break;
     case OP_BEQ:
     case OP_BNE:
+    case OP_JLT:
+    case OP_JGT:
         if (!parse_register(tokens[1], &a) || !parse_register(tokens[2], &b)) {
             fprintf(stderr, "line %d: invalid branch register operand\n", line_no);
             return false;
         }
         if (!parse_label_or_address(tokens[3], &c, line_no)) {
+            return false;
+        }
+        break;
+    case OP_PUSH:
+    case OP_POP:
+        if (!parse_register(tokens[1], &a)) {
+            fprintf(stderr, "line %d: invalid stack register operand '%s'\n", line_no, tokens[1]);
             return false;
         }
         break;

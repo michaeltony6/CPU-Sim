@@ -13,7 +13,21 @@ typedef enum {
     OP_JMP = 6,
     OP_BEQ = 7,
     OP_BNE = 8,
-    OP_HALT = 9
+    OP_HALT = 9,
+    OP_ADDI = 10,
+    OP_AND = 11,
+    OP_OR = 12,
+    OP_XOR = 13,
+    OP_SHL = 14,
+    OP_SHR = 15,
+    OP_LOADR = 16,
+    OP_STORER = 17,
+    OP_JLT = 18,
+    OP_JGT = 19,
+    OP_PUSH = 20,
+    OP_POP = 21,
+    OP_CALL = 22,
+    OP_RET = 23
 } Opcode;
 
 static inline const char *opcode_name(int opcode)
@@ -29,6 +43,20 @@ static inline const char *opcode_name(int opcode)
     case OP_BEQ: return "BEQ";
     case OP_BNE: return "BNE";
     case OP_HALT: return "HALT";
+    case OP_ADDI: return "ADDI";
+    case OP_AND: return "AND";
+    case OP_OR: return "OR";
+    case OP_XOR: return "XOR";
+    case OP_SHL: return "SHL";
+    case OP_SHR: return "SHR";
+    case OP_LOADR: return "LOADR";
+    case OP_STORER: return "STORER";
+    case OP_JLT: return "JLT";
+    case OP_JGT: return "JGT";
+    case OP_PUSH: return "PUSH";
+    case OP_POP: return "POP";
+    case OP_CALL: return "CALL";
+    case OP_RET: return "RET";
     default: return "UNKNOWN";
     }
 }

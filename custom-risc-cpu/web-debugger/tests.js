@@ -29,9 +29,15 @@ const fib = runProgram(EXAMPLES.fibonacci_10_terms);
 assert.strictEqual(fib.cpu.memory[250], 88);
 assert.strictEqual(fib.cpu.halted, true);
 
+const v2 = runProgram(EXAMPLES.isa_v2_demo);
+assert.strictEqual(v2.cpu.memory[250], 20);
+assert.strictEqual(v2.cpu.output.at(-1), 20);
+assert.strictEqual(v2.cpu.halted, true);
+
 assert.throws(() => assemble("bad-label: HALT"), /invalid label/);
 assert.throws(() => assemble("JMP 3"), /invalid branch target/);
 assert.throws(() => assemble("MOVI R8, 1"), /invalid register/);
+assert.throws(() => assemble("SHL R1, R2, 32"), /invalid shift amount/);
 
 const branchy = assemble(`MOVI R1, 1
 loop:

@@ -31,7 +31,9 @@ const els = {
     pcValue: document.querySelector("#pcValue"),
     stepValue: document.querySelector("#stepValue"),
     haltValue: document.querySelector("#haltValue"),
+    flagsValue: document.querySelector("#flagsValue"),
     resultValue: document.querySelector("#resultValue"),
+    outputValue: document.querySelector("#outputValue"),
     registerGrid: document.querySelector("#registerGrid"),
     memoryGrid: document.querySelector("#memoryGrid"),
     listingBody: document.querySelector("#listingBody"),
@@ -192,7 +194,9 @@ function renderEmptyState() {
     els.pcValue.textContent = "--";
     els.stepValue.textContent = "--";
     els.haltValue.textContent = "--";
+    els.flagsValue.textContent = "--";
     els.resultValue.textContent = "--";
+    els.outputValue.textContent = "--";
     els.registerGrid.innerHTML = "";
     els.memoryGrid.innerHTML = "";
     els.listingBody.innerHTML = "";
@@ -204,7 +208,9 @@ function renderStats() {
     els.pcValue.textContent = cpu.pc;
     els.stepValue.textContent = cpu.steps;
     els.haltValue.textContent = cpu.fault ? "FAULT" : (cpu.halted ? "HALT" : "RUN");
+    els.flagsValue.textContent = `Z${Number(cpu.flags.zero)} N${Number(cpu.flags.negative)} C${Number(cpu.flags.carry)}`;
     els.resultValue.textContent = cpu.memory[250];
+    els.outputValue.textContent = cpu.output.length > 0 ? cpu.output.at(-1) : "--";
 }
 
 function renderRegisters() {

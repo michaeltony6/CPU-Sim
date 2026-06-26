@@ -15,6 +15,7 @@ make >/dev/null
 ./assembler programs/add_two_numbers.asm "$VERILOG_DIR/programs/add_two_numbers.mem" >/dev/null
 ./assembler programs/sum_1_to_10.asm "$VERILOG_DIR/programs/sum_1_to_10.mem" >/dev/null
 ./assembler programs/fibonacci_10_terms.asm "$VERILOG_DIR/programs/fibonacci_10_terms.mem" >/dev/null
+./assembler programs/isa_v2_demo.asm "$VERILOG_DIR/programs/isa_v2_demo.mem" >/dev/null
 
 cd "$VERILOG_DIR"
 iverilog -o cpu_tb_add -Ptestbench.PROGRAM_FILE='"programs/add_two_numbers.mem"' -Ptestbench.EXPECTED_MEM250=12 \
@@ -29,8 +30,12 @@ iverilog -o cpu_tb_fib -Ptestbench.PROGRAM_FILE='"programs/fibonacci_10_terms.me
     testbench.v cpu.v alu.v register_file.v memory.v control.v
 vvp cpu_tb_fib | grep 'MEM\[250\] = 88' >/dev/null
 
+iverilog -o cpu_tb_v2 -Ptestbench.PROGRAM_FILE='"programs/isa_v2_demo.mem"' -Ptestbench.EXPECTED_MEM250=20 \
+    testbench.v cpu.v alu.v register_file.v memory.v control.v
+vvp cpu_tb_v2 | grep 'MEM\[250\] = 20' >/dev/null
+
 iverilog -o fault_tb fault_testbench.v cpu.v alu.v register_file.v memory.v control.v
 vvp fault_tb | grep 'CPU faulted as expected' >/dev/null
 
-rm -f cpu_tb_add cpu_tb_sum cpu_tb_fib fault_tb dump.vcd fault_dump.vcd
+rm -f cpu_tb_add cpu_tb_sum cpu_tb_fib cpu_tb_v2 fault_tb dump.vcd fault_dump.vcd
 echo "All Verilog tests passed."

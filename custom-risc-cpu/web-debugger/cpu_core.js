@@ -22,7 +22,21 @@
         JMP: 6,
         BEQ: 7,
         BNE: 8,
-        HALT: 9
+        HALT: 9,
+        ADDI: 10,
+        AND: 11,
+        OR: 12,
+        XOR: 13,
+        SHL: 14,
+        SHR: 15,
+        LOADR: 16,
+        STORER: 17,
+        JLT: 18,
+        JGT: 19,
+        PUSH: 20,
+        POP: 21,
+        CALL: 22,
+        RET: 23
     });
 
     const OPCODE_NAMES = Object.freeze(Object.fromEntries(
@@ -76,6 +90,46 @@ JMP loop
 done:
 STORE R3, 250
 HALT
+`,
+        isa_v2_demo: `; ISA v2 demo.
+; Expected result: MEM[250] = 20.
+
+MOVI R7, 256
+MOVI R1, 5
+ADDI R2, R1, 3
+MOVI R3, 6
+AND R4, R2, R3
+OR R4, R2, R3
+XOR R4, R4, R3
+SHL R5, R1, 2
+SHR R6, R5, 1
+
+MOVI R0, 240
+STORER R6, R0
+LOADR R3, R0
+
+PUSH R3
+MOVI R3, 0
+POP R4
+CALL double
+
+MOVI R5, 25
+JLT R4, R5, less_ok
+MOVI R4, 0
+
+less_ok:
+JGT R4, R3, greater_ok
+MOVI R4, 0
+
+greater_ok:
+MOVI R6, 255
+STORER R4, R6
+STORE R4, 250
+HALT
+
+double:
+ADD R4, R4, R4
+RET
 `
     });
 
@@ -146,6 +200,12 @@ HALT
         }
     }
 
+    function validateShiftAmount(amount, lineNumber) {
+        if (!Number.isInteger(amount) || amount < 0 || amount > 31) {
+            throw new AssemblyError(lineNumber, `invalid shift amount ${amount} (must be 0-31)`);
+        }
+    }
+
     function validateLabel(name, lineNumber) {
         if (!name) {
             throw new AssemblyError(lineNumber, "empty label");
@@ -165,17 +225,31 @@ HALT
         switch (opcodeName) {
         case "NOP":
         case "HALT":
+        case "RET":
             return 0;
         case "JMP":
+        case "CALL":
+        case "PUSH":
+        case "POP":
             return 1;
         case "LOAD":
         case "STORE":
         case "MOVI":
+        case "LOADR":
+        case "STORER":
             return 2;
         case "ADD":
         case "SUB":
         case "BEQ":
         case "BNE":
+        case "ADDI":
+        case "AND":
+        case "OR":
+        case "XOR":
+        case "SHL":
+        case "SHR":
+        case "JLT":
+        case "JGT":
             return 3;
         default:
             return -1;
@@ -277,18 +351,45 @@ HALT
                 break;
             case "ADD":
             case "SUB":
+            case "AND":
+            case "OR":
+            case "XOR":
                 a = parseRegister(tokens[1], line.lineNumber);
                 b = parseRegister(tokens[2], line.lineNumber);
                 c = parseRegister(tokens[3], line.lineNumber);
                 break;
+            case "ADDI":
+                a = parseRegister(tokens[1], line.lineNumber);
+                b = parseRegister(tokens[2], line.lineNumber);
+                c = parseInteger(tokens[3], line.lineNumber, "immediate");
+                break;
+            case "SHL":
+            case "SHR":
+                a = parseRegister(tokens[1], line.lineNumber);
+                b = parseRegister(tokens[2], line.lineNumber);
+                c = parseInteger(tokens[3], line.lineNumber, "shift amount");
+                validateShiftAmount(c, line.lineNumber);
+                break;
+            case "LOADR":
+            case "STORER":
+                a = parseRegister(tokens[1], line.lineNumber);
+                b = parseRegister(tokens[2], line.lineNumber);
+                break;
             case "JMP":
+            case "CALL":
                 a = resolveTarget(tokens[1], labels, line.lineNumber);
                 break;
             case "BEQ":
             case "BNE":
+            case "JLT":
+            case "JGT":
                 a = parseRegister(tokens[1], line.lineNumber);
                 b = parseRegister(tokens[2], line.lineNumber);
                 c = resolveTarget(tokens[3], labels, line.lineNumber);
+                break;
+            case "PUSH":
+            case "POP":
+                a = parseRegister(tokens[1], line.lineNumber);
                 break;
             default:
                 break;
@@ -334,6 +435,9 @@ HALT
                 this.memory[i] = this.originalWords[i];
             }
             this.registers = new Array(NUM_REGISTERS).fill(0);
+            this.registers[7] = MEMORY_SIZE;
+            this.flags = { zero: false, negative: false, carry: false };
+            this.output = [];
             this.pc = 0;
             this.steps = 0;
             this.halted = false;
@@ -357,6 +461,47 @@ HALT
             if (!Number.isInteger(target) || target < 0 || target > MEMORY_SIZE - INSTR_WIDTH || target % INSTR_WIDTH !== 0) {
                 throw new RuntimeError(this.pc, `invalid branch target ${target}`);
             }
+        }
+
+        requireShiftAmount(amount) {
+            if (!Number.isInteger(amount) || amount < 0 || amount > 31) {
+                throw new RuntimeError(this.pc, `invalid shift amount ${amount}`);
+            }
+        }
+
+        updateFlags(value, carry = false) {
+            this.flags = {
+                zero: value === 0,
+                negative: value < 0,
+                carry
+            };
+        }
+
+        writeRegister(reg, value, carry = false) {
+            this.registers[reg] = value | 0;
+            this.updateFlags(this.registers[reg], carry);
+        }
+
+        writeMemory(addr, value) {
+            this.memory[addr] = value | 0;
+            if (addr === 255) {
+                this.output.push(this.memory[addr]);
+            }
+        }
+
+        pushValue(value) {
+            const nextSp = this.registers[7] - 1;
+            this.requireAddress(nextSp);
+            this.registers[7] = nextSp;
+            this.memory[nextSp] = value | 0;
+        }
+
+        popValue() {
+            const sp = this.registers[7];
+            this.requireAddress(sp);
+            const value = this.memory[sp];
+            this.registers[7] = sp + 1;
+            return value;
         }
 
         fetch() {
@@ -397,28 +542,34 @@ HALT
             case OPCODES.LOAD:
                 this.requireRegister(instr.a);
                 this.requireAddress(instr.b);
-                this.registers[instr.a] = this.memory[instr.b];
+                this.writeRegister(instr.a, this.memory[instr.b]);
                 break;
             case OPCODES.STORE:
                 this.requireRegister(instr.a);
                 this.requireAddress(instr.b);
-                this.memory[instr.b] = this.registers[instr.a];
+                this.writeMemory(instr.b, this.registers[instr.a]);
                 break;
             case OPCODES.MOVI:
                 this.requireRegister(instr.a);
-                this.registers[instr.a] = instr.b;
+                this.writeRegister(instr.a, instr.b);
                 break;
             case OPCODES.ADD:
                 this.requireRegister(instr.a);
                 this.requireRegister(instr.b);
                 this.requireRegister(instr.c);
-                this.registers[instr.a] = this.registers[instr.b] + this.registers[instr.c];
+                {
+                    const result = this.registers[instr.b] + this.registers[instr.c];
+                    this.writeRegister(instr.a, result, result > 2147483647 || result < -2147483648);
+                }
                 break;
             case OPCODES.SUB:
                 this.requireRegister(instr.a);
                 this.requireRegister(instr.b);
                 this.requireRegister(instr.c);
-                this.registers[instr.a] = this.registers[instr.b] - this.registers[instr.c];
+                {
+                    const result = this.registers[instr.b] - this.registers[instr.c];
+                    this.writeRegister(instr.a, result, result > 2147483647 || result < -2147483648);
+                }
                 break;
             case OPCODES.JMP:
                 this.requireTarget(instr.a);
@@ -442,6 +593,89 @@ HALT
                 break;
             case OPCODES.HALT:
                 this.halted = true;
+                break;
+            case OPCODES.ADDI:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                {
+                    const result = this.registers[instr.b] + instr.c;
+                    this.writeRegister(instr.a, result, result > 2147483647 || result < -2147483648);
+                }
+                break;
+            case OPCODES.AND:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireRegister(instr.c);
+                this.writeRegister(instr.a, this.registers[instr.b] & this.registers[instr.c]);
+                break;
+            case OPCODES.OR:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireRegister(instr.c);
+                this.writeRegister(instr.a, this.registers[instr.b] | this.registers[instr.c]);
+                break;
+            case OPCODES.XOR:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireRegister(instr.c);
+                this.writeRegister(instr.a, this.registers[instr.b] ^ this.registers[instr.c]);
+                break;
+            case OPCODES.SHL:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireShiftAmount(instr.c);
+                this.writeRegister(instr.a, this.registers[instr.b] << instr.c, instr.c !== 0 && ((this.registers[instr.b] >>> (32 - instr.c)) !== 0));
+                break;
+            case OPCODES.SHR:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireShiftAmount(instr.c);
+                this.writeRegister(instr.a, this.registers[instr.b] >>> instr.c);
+                break;
+            case OPCODES.LOADR:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireAddress(this.registers[instr.b]);
+                this.writeRegister(instr.a, this.memory[this.registers[instr.b]]);
+                break;
+            case OPCODES.STORER:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireAddress(this.registers[instr.b]);
+                this.writeMemory(this.registers[instr.b], this.registers[instr.a]);
+                break;
+            case OPCODES.JLT:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireTarget(instr.c);
+                if (this.registers[instr.a] < this.registers[instr.b]) {
+                    nextPc = instr.c;
+                }
+                break;
+            case OPCODES.JGT:
+                this.requireRegister(instr.a);
+                this.requireRegister(instr.b);
+                this.requireTarget(instr.c);
+                if (this.registers[instr.a] > this.registers[instr.b]) {
+                    nextPc = instr.c;
+                }
+                break;
+            case OPCODES.PUSH:
+                this.requireRegister(instr.a);
+                this.pushValue(this.registers[instr.a]);
+                break;
+            case OPCODES.POP:
+                this.requireRegister(instr.a);
+                this.writeRegister(instr.a, this.popValue());
+                break;
+            case OPCODES.CALL:
+                this.requireTarget(instr.a);
+                this.pushValue(nextPc);
+                nextPc = instr.a;
+                break;
+            case OPCODES.RET:
+                nextPc = this.popValue();
+                this.requireTarget(nextPc);
                 break;
             default:
                 throw new RuntimeError(this.pc, `unknown opcode ${instr.opcode}`);
@@ -503,6 +737,7 @@ HALT
         switch (name) {
         case "NOP":
         case "HALT":
+        case "RET":
             return name;
         case "LOAD":
             return `LOAD R${a}, ${b}`;
@@ -520,6 +755,32 @@ HALT
             return `BEQ R${a}, R${b}, ${c}`;
         case "BNE":
             return `BNE R${a}, R${b}, ${c}`;
+        case "ADDI":
+            return `ADDI R${a}, R${b}, ${c}`;
+        case "AND":
+            return `AND R${a}, R${b}, R${c}`;
+        case "OR":
+            return `OR R${a}, R${b}, R${c}`;
+        case "XOR":
+            return `XOR R${a}, R${b}, R${c}`;
+        case "SHL":
+            return `SHL R${a}, R${b}, ${c}`;
+        case "SHR":
+            return `SHR R${a}, R${b}, ${c}`;
+        case "LOADR":
+            return `LOADR R${a}, R${b}`;
+        case "STORER":
+            return `STORER R${a}, R${b}`;
+        case "JLT":
+            return `JLT R${a}, R${b}, ${c}`;
+        case "JGT":
+            return `JGT R${a}, R${b}, ${c}`;
+        case "PUSH":
+            return `PUSH R${a}`;
+        case "POP":
+            return `POP R${a}`;
+        case "CALL":
+            return `CALL ${a}`;
         default:
             return `${name} ${a}, ${b}, ${c}`;
         }

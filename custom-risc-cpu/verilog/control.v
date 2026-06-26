@@ -7,9 +7,11 @@ module control(
     output reg alu_src_imm,
     output reg branch_eq,
     output reg branch_ne,
+    output reg branch_lt,
+    output reg branch_gt,
     output reg jump,
     output reg halt,
-    output reg [2:0] alu_op
+    output reg [3:0] alu_op
 );
     localparam OP_NOP   = 32'd0;
     localparam OP_LOAD  = 32'd1;
@@ -21,10 +23,29 @@ module control(
     localparam OP_BEQ   = 32'd7;
     localparam OP_BNE   = 32'd8;
     localparam OP_HALT  = 32'd9;
+    localparam OP_ADDI  = 32'd10;
+    localparam OP_AND   = 32'd11;
+    localparam OP_OR    = 32'd12;
+    localparam OP_XOR   = 32'd13;
+    localparam OP_SHL   = 32'd14;
+    localparam OP_SHR   = 32'd15;
+    localparam OP_LOADR = 32'd16;
+    localparam OP_STORER = 32'd17;
+    localparam OP_JLT   = 32'd18;
+    localparam OP_JGT   = 32'd19;
+    localparam OP_PUSH  = 32'd20;
+    localparam OP_POP   = 32'd21;
+    localparam OP_CALL  = 32'd22;
+    localparam OP_RET   = 32'd23;
 
-    localparam ALU_ADD  = 3'd0;
-    localparam ALU_SUB  = 3'd1;
-    localparam ALU_PASS = 3'd2;
+    localparam ALU_ADD  = 4'd0;
+    localparam ALU_SUB  = 4'd1;
+    localparam ALU_PASS = 4'd2;
+    localparam ALU_AND  = 4'd3;
+    localparam ALU_OR   = 4'd4;
+    localparam ALU_XOR  = 4'd5;
+    localparam ALU_SHL  = 4'd6;
+    localparam ALU_SHR  = 4'd7;
 
     always @(*) begin
         reg_write = 1'b0;
@@ -33,6 +54,8 @@ module control(
         alu_src_imm = 1'b0;
         branch_eq = 1'b0;
         branch_ne = 1'b0;
+        branch_lt = 1'b0;
+        branch_gt = 1'b0;
         jump = 1'b0;
         halt = 1'b0;
         alu_op = ALU_ADD;
@@ -42,7 +65,14 @@ module control(
                 reg_write = 1'b1;
                 mem_to_reg = 1'b1;
             end
+            OP_LOADR: begin
+                reg_write = 1'b1;
+                mem_to_reg = 1'b1;
+            end
             OP_STORE: begin
+                mem_write = 1'b1;
+            end
+            OP_STORER: begin
                 mem_write = 1'b1;
             end
             OP_MOVI: begin
@@ -54,9 +84,36 @@ module control(
                 reg_write = 1'b1;
                 alu_op = ALU_ADD;
             end
+            OP_ADDI: begin
+                reg_write = 1'b1;
+                alu_src_imm = 1'b1;
+                alu_op = ALU_ADD;
+            end
             OP_SUB: begin
                 reg_write = 1'b1;
                 alu_op = ALU_SUB;
+            end
+            OP_AND: begin
+                reg_write = 1'b1;
+                alu_op = ALU_AND;
+            end
+            OP_OR: begin
+                reg_write = 1'b1;
+                alu_op = ALU_OR;
+            end
+            OP_XOR: begin
+                reg_write = 1'b1;
+                alu_op = ALU_XOR;
+            end
+            OP_SHL: begin
+                reg_write = 1'b1;
+                alu_src_imm = 1'b1;
+                alu_op = ALU_SHL;
+            end
+            OP_SHR: begin
+                reg_write = 1'b1;
+                alu_src_imm = 1'b1;
+                alu_op = ALU_SHR;
             end
             OP_JMP: begin
                 jump = 1'b1;
@@ -68,6 +125,28 @@ module control(
             OP_BNE: begin
                 branch_ne = 1'b1;
                 alu_op = ALU_SUB;
+            end
+            OP_JLT: begin
+                branch_lt = 1'b1;
+                alu_op = ALU_SUB;
+            end
+            OP_JGT: begin
+                branch_gt = 1'b1;
+                alu_op = ALU_SUB;
+            end
+            OP_PUSH: begin
+                mem_write = 1'b1;
+            end
+            OP_POP: begin
+                reg_write = 1'b1;
+                mem_to_reg = 1'b1;
+            end
+            OP_CALL: begin
+                jump = 1'b1;
+                mem_write = 1'b1;
+            end
+            OP_RET: begin
+                jump = 1'b1;
             end
             OP_HALT: begin
                 halt = 1'b1;
