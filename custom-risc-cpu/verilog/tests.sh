@@ -37,5 +37,8 @@ vvp cpu_tb_v2 | grep 'MEM\[250\] = 20' >/dev/null
 iverilog -o fault_tb fault_testbench.v cpu.v alu.v register_file.v memory.v control.v
 vvp fault_tb | grep 'CPU faulted as expected' >/dev/null
 
-rm -f cpu_tb_add cpu_tb_sum cpu_tb_fib cpu_tb_v2 fault_tb dump.vcd fault_dump.vcd
+iverilog -o hazard_tb hazard_unit_testbench.v hazard_unit.v pipeline_register.v
+vvp hazard_tb | grep 'HAZARD UNIT TESTS PASSED' >/dev/null
+
+rm -f cpu_tb_add cpu_tb_sum cpu_tb_fib cpu_tb_v2 fault_tb hazard_tb dump.vcd fault_dump.vcd hazard_dump.vcd
 echo "All Verilog tests passed."

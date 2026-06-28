@@ -7,10 +7,13 @@ This repository includes:
 - A C-based CPU simulator with fetch-decode-execute behavior.
 - A lightweight two-pass assembler for `.asm` source files.
 - A disassembler for inspecting integer `.bin` machine-code files.
+- Native C profiling and terminal-debugging tools.
 - Example assembly programs for arithmetic, loops, and Fibonacci logic.
 - A matching Verilog implementation of the same instruction set.
+- Standalone Verilog pipeline-control modules for hazards, forwarding, stalls, and flushes.
 - An Icarus Verilog testbench that generates a GTKWave-compatible VCD file.
 - Automated C and Verilog regression tests for core programs and invalid-input handling.
+- Shell scripts for full example runs, scripted debugging demos, and source language reporting.
 - An interactive browser debugger for assembling, stepping, tracing, and visualizing CPU state.
 - An expanded ISA with bitwise operations, shifts, register-indirect memory, signed branches, stack operations, subroutine calls, flags, and memory-mapped output.
 - A five-stage pipeline visualizer with cycle-by-cycle IF/ID/EX/MEM/WB state, data stalls, branch flushes, and CPI metrics.
@@ -111,6 +114,17 @@ cd custom-risc-cpu/c-simulator
 ./assembler programs/sum_1_to_10.asm programs/sum_1_to_10.bin
 ./cpu_sim programs/sum_1_to_10.bin --trace
 ./disassembler programs/sum_1_to_10.bin
+./profiler programs/sum_1_to_10.bin
+./debugger programs/sum_1_to_10.bin
+```
+
+Run the full shell automation layer:
+
+```sh
+cd custom-risc-cpu
+./scripts/run_all_examples.sh
+./scripts/debug_isa_v2.sh
+./scripts/language_mix.sh
 ```
 
 Expected example results:
@@ -135,6 +149,8 @@ gtkwave dump.vcd
 
 The testbench loads `programs/add_two_numbers.mem`, executes the CPU, prints trace information, and writes `dump.vcd` for waveform inspection.
 
+The Verilog folder also includes a standalone hazard/forwarding unit and reusable pipeline register. Their testbench checks load-use stalls, forwarding priority, branch flushes, and register stall/flush behavior.
+
 Run the Verilog regression tests:
 
 ```sh
@@ -157,6 +173,9 @@ The project includes both CLI and visual debugging:
 - Flags for zero, negative, and carry/overflow-style arithmetic status.
 - `MEM[255]` memory-mapped output for simple I/O-style demos.
 - Five-stage pipeline visualization with hazard stalls, branch flushes, retired-instruction count, and CPI.
+- Native C profiler summaries for opcode mix, branches, calls, stack depth, and memory/register traffic.
+- Terminal debugger commands for stepping, breakpoints, disassembly, register dumps, and memory inspection.
+- Shell-driven demos that can be run from a fresh clone.
 
 These features make it easier to debug PC updates, branch logic, loop behavior, and memory/register state.
 
@@ -168,6 +187,7 @@ These features make it easier to debug PC updates, branch logic, loop behavior, 
 - Built an interactive browser debugger that assembles code, steps execution, manages breakpoints, highlights CPU state changes, and exports machine code.
 - Expanded the ISA with stack/subroutine support, register-indirect memory, signed branches, bitwise operations, shifts, condition flags, and memory-mapped output.
 - Added a five-stage pipeline debugger with cycle-by-cycle stage visualization, data hazard stalls, branch flush tracking, and CPI statistics.
+- Added C profiling/debugging tools, Verilog hazard-control modules, and shell automation to make the project easier to demo and validate.
 
 ## Full Documentation
 

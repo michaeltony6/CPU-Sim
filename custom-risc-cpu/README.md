@@ -23,6 +23,8 @@ custom-risc-cpu/
     cpu_sim.c
     assembler.c
     disassembler.c
+    profiler.c
+    debugger.c
     Makefile
     tests.sh
     programs/
@@ -30,6 +32,10 @@ custom-risc-cpu/
       sum_1_to_10.asm
       fibonacci_10_terms.asm
       isa_v2_demo.asm
+  scripts/
+    run_all_examples.sh
+    debug_isa_v2.sh
+    language_mix.sh
   web-debugger/
     index.html
     styles.css
@@ -45,6 +51,9 @@ custom-risc-cpu/
     control.v
     testbench.v
     fault_testbench.v
+    hazard_unit.v
+    hazard_unit_testbench.v
+    pipeline_register.v
     tests.sh
     programs/
       add_two_numbers.mem
@@ -148,6 +157,10 @@ It supports:
 
 The disassembler reads newline-separated integer `.bin` files and prints readable instructions with PC addresses. This makes it easy to inspect generated machine code or debug assembler output.
 
+The native profiler runs a program and reports execution metrics such as opcode counts, register reads/writes, memory reads/writes, branch behavior, stack depth, call/return activity, MMIO output count, and final `MEM[250]`.
+
+The native debugger supports both interactive and scripted sessions with commands for stepping, running, breakpoints, register dumps, memory inspection, and disassembly windows. This gives the project a terminal workflow that complements the browser debugger.
+
 Example assembly:
 
 ```asm
@@ -191,6 +204,27 @@ Assemble and run manually:
 ./assembler programs/sum_1_to_10.asm programs/sum_1_to_10.bin
 ./cpu_sim programs/sum_1_to_10.bin --trace
 ./disassembler programs/sum_1_to_10.bin
+./profiler programs/sum_1_to_10.bin
+./debugger programs/sum_1_to_10.bin
+```
+
+Run every assembly example through the C toolchain:
+
+```sh
+cd custom-risc-cpu
+./scripts/run_all_examples.sh
+```
+
+Run a scripted terminal-debugger demo:
+
+```sh
+./scripts/debug_isa_v2.sh
+```
+
+Check the local source language mix:
+
+```sh
+./scripts/language_mix.sh
 ```
 
 Clean generated files:
@@ -262,6 +296,9 @@ The Verilog CPU maps directly to the C simulator:
 - `memory.v` implements 256-word shared instruction/data memory.
 - `testbench.v` loads `programs/add_two_numbers.mem`, runs the CPU, and generates `dump.vcd`.
 - `fault_testbench.v` verifies that invalid operands halt the CPU with a visible fault.
+- `hazard_unit.v` models data forwarding, load-use stalls, and branch flush control for a pipelined version.
+- `pipeline_register.v` provides reusable valid/data pipeline storage with stall and flush controls.
+- `hazard_unit_testbench.v` verifies forwarding priority, load-use stalls, branch flushes, and pipeline-register behavior.
 
 Run with Icarus Verilog:
 
@@ -283,6 +320,8 @@ cd custom-risc-cpu/verilog
 
 The Verilog implementation includes simulation-time fault checks for invalid register numbers, invalid memory addresses, invalid branch targets, and invalid PC values. The `$fopen`, `$fscanf`, `$display`, and VCD dump features are intended for simulation and debugging rather than direct synthesis.
 
+The hazard unit is a standalone hardware module that maps directly to the browser pipeline visualizer. It is not wired into the single-cycle CPU top level yet, but it documents and tests the control policy needed for a future pipelined Verilog CPU.
+
 ## Debugging Notes
 
 - PC updates are the most important behavior to inspect. Normal instructions advance by 4 words, while `JMP`, `BEQ`, and `BNE` replace `PC` with a label target.
@@ -291,17 +330,19 @@ The Verilog implementation includes simulation-time fault checks for invalid reg
 - Shared instruction/data memory means storing into low addresses can overwrite a running program. The example programs store results at `MEM[250]` to avoid that.
 - If a program hangs, check label placement, branch condition registers, and whether the loop counter changes before the branch target repeats.
 - If the Verilog CPU halts with `fault=1`, inspect the decoded instruction fields for an invalid register number, memory address, branch target, or PC.
+- Use `./profiler program.bin` when you want opcode counts, branch statistics, stack usage, and memory/register traffic without reading every trace line.
+- Use `./debugger program.bin commands.txt` to make repeatable terminal debugging sessions for demos or regression checks.
 - In the web debugger, use breakpoints on loop labels and watch the highlighted register/memory cells after each step.
 - For stack programs, initialize or preserve `R7` as the stack pointer. It starts at `256`, and the first `PUSH` or `CALL` writes to `MEM[255]`.
 - In pipeline mode, use **Pipeline Cycle** to advance one hardware cycle at a time. Yellow rows indicate data stalls; red rows indicate branch/control flushes.
 
 ## Known Limitations
 
-- The ISA is still intentionally small: there are no interrupts, byte-addressed loads, or pipeline stages.
+- The ISA is still intentionally small: there are no interrupts, byte-addressed loads, or caches.
 - The Verilog memory loader and trace output are simulation conveniences, not a complete FPGA memory-initialization flow.
 - The C simulator and Verilog CPU share behavior for the supported ISA, but the C simulator remains the reference model for detailed error messages.
 - The web debugger is a static educational tool and mirrors the ISA behavior in JavaScript; it is not a replacement for the C reference simulator.
-- The pipeline visualizer is a performance/debugging model for the web debugger, not a separate pipelined Verilog implementation.
+- The pipeline visualizer and standalone Verilog hazard unit show the pipeline control policy, but the top-level Verilog CPU remains single-cycle.
 
 ## Resume Bullets
 
@@ -311,3 +352,4 @@ The Verilog implementation includes simulation-time fault checks for invalid reg
 - Created an interactive browser debugger with assembly editing, breakpoints, step/run controls, trace output, state-change highlighting, and machine-code export.
 - Expanded the CPU with bitwise logic, shifts, immediate arithmetic, register-indirect memory, signed branches, stack operations, subroutine calls, status flags, and memory-mapped output.
 - Added a five-stage pipeline visualization mode with IF/ID/EX/MEM/WB stages, data stalls, branch flushes, retired instruction counts, and CPI metrics.
+- Added native C profiling/debugging tools, shell automation scripts, and Verilog pipeline-control modules with regression tests.

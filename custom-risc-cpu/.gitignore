@@ -1,9 +1,14 @@
 c-simulator/*.o
 c-simulator/cpu_sim
 c-simulator/assembler
+c-simulator/disassembler
+c-simulator/profiler
+c-simulator/debugger
 c-simulator/programs/*.bin
 verilog/cpu_tb
 verilog/cpu_tb_*
 verilog/fault_tb
+verilog/hazard_tb
 verilog/dump.vcd
 verilog/fault_dump.vcd
+verilog/hazard_dump.vcd

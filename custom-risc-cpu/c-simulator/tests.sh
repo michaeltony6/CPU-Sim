@@ -54,6 +54,22 @@ check_result isa_v2_demo 20
 grep 'ADDI R2, R1, 3' "$tmp_dir/isa_v2_demo.disasm" >/dev/null
 grep 'CALL 100' "$tmp_dir/isa_v2_demo.disasm" >/dev/null
 
+./profiler "$tmp_dir/isa_v2_demo.bin" > "$tmp_dir/isa_v2_demo.profile"
+grep 'final MEM\[250\]: 20' "$tmp_dir/isa_v2_demo.profile" >/dev/null
+grep 'mmio_outputs: 1' "$tmp_dir/isa_v2_demo.profile" >/dev/null
+grep 'CALL' "$tmp_dir/isa_v2_demo.profile" >/dev/null
+
+cat > "$tmp_dir/debugger.commands" <<'CMDS'
+step 4
+regs
+run
+mem 250 1
+quit
+CMDS
+./debugger "$tmp_dir/isa_v2_demo.bin" "$tmp_dir/debugger.commands" > "$tmp_dir/debugger.out"
+grep 'R2=8' "$tmp_dir/debugger.out" >/dev/null
+grep 'MEM\[250\]=20' "$tmp_dir/debugger.out" >/dev/null
+
 expect_assembler_fail bad_register 'MOVI R8, 1' 'invalid register'
 expect_assembler_fail bad_opcode 'NOPE R1, 1' 'unknown opcode'
 expect_assembler_fail bad_label 'bad-label: HALT' 'invalid label'
