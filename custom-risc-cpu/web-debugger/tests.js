@@ -4,6 +4,7 @@ const assert = require("assert");
 const {
     Cpu,
     EXAMPLES,
+    PipelineCpu,
     assemble,
     formatInstruction
 } = require("./cpu_core");
@@ -33,6 +34,19 @@ const v2 = runProgram(EXAMPLES.isa_v2_demo);
 assert.strictEqual(v2.cpu.memory[250], 20);
 assert.strictEqual(v2.cpu.output.at(-1), 20);
 assert.strictEqual(v2.cpu.halted, true);
+
+const pipeAddAsm = assemble(EXAMPLES.add_two_numbers);
+const pipeAdd = new PipelineCpu(pipeAddAsm);
+pipeAdd.runUntilDone();
+assert.strictEqual(pipeAdd.cpu.memory[250], 12);
+assert(pipeAdd.stats().cycles > pipeAdd.stats().retired);
+assert(pipeAdd.stats().stalls > 0);
+
+const pipeSumAsm = assemble(EXAMPLES.sum_1_to_10);
+const pipeSum = new PipelineCpu(pipeSumAsm);
+pipeSum.runUntilDone();
+assert.strictEqual(pipeSum.cpu.memory[250], 55);
+assert(pipeSum.stats().flushes > 0);
 
 assert.throws(() => assemble("bad-label: HALT"), /invalid label/);
 assert.throws(() => assemble("JMP 3"), /invalid branch target/);

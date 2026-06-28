@@ -18,6 +18,7 @@ Features:
 - Highlight changed registers and memory after each instruction.
 - Export newline-separated integer `.bin` machine code.
 - Run ISA v2 programs with bitwise operations, shifts, stack/subroutine instructions, signed branches, register-indirect memory, flags, and memory-mapped output.
+- Step through a five-stage pipeline model with IF, ID, EX, MEM, WB, data-hazard stalls, branch flushes, and CPI stats.
 
 ![Interactive CPU Debugger](../docs/images/web-debugger.png)
 

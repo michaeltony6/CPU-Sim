@@ -715,6 +715,238 @@ RET
         }
     }
 
+    function instructionReads(words) {
+        const [opcode, a, b] = words;
+        switch (opcodeName(opcode)) {
+        case "STORE":
+            return [a];
+        case "ADD":
+        case "SUB":
+        case "AND":
+        case "OR":
+        case "XOR":
+        case "BEQ":
+        case "BNE":
+        case "JLT":
+        case "JGT":
+            return [a, b];
+        case "ADDI":
+        case "SHL":
+        case "SHR":
+        case "LOADR":
+            return [b];
+        case "STORER":
+            return [a, b];
+        case "PUSH":
+            return [a, 7];
+        case "POP":
+        case "RET":
+        case "CALL":
+            return [7];
+        default:
+            return [];
+        }
+    }
+
+    function instructionWrites(words) {
+        const [opcode, a] = words;
+        switch (opcodeName(opcode)) {
+        case "LOAD":
+        case "MOVI":
+        case "ADD":
+        case "SUB":
+        case "ADDI":
+        case "AND":
+        case "OR":
+        case "XOR":
+        case "SHL":
+        case "SHR":
+        case "LOADR":
+            return [a];
+        case "PUSH":
+        case "CALL":
+        case "RET":
+            return [7];
+        case "POP":
+            return [a, 7];
+        default:
+            return [];
+        }
+    }
+
+    function stageLabel(entry) {
+        if (!entry) {
+            return "-";
+        }
+        if (entry.bubble) {
+            return "STALL";
+        }
+        return `${entry.address}: ${formatInstruction(entry.listing)}`;
+    }
+
+    class PipelineCpu {
+        constructor(assembled) {
+            this.assembled = assembled;
+            this.listingByAddress = new Map(assembled.listing.map((item) => [item.address, item]));
+            this.cpu = new Cpu(assembled.words);
+            this.reset();
+        }
+
+        reset() {
+            this.cpu = new Cpu(this.assembled.words);
+            this.fetchPc = 0;
+            this.fetchStopped = false;
+            this.cycle = 0;
+            this.stalls = 0;
+            this.flushes = 0;
+            this.history = [];
+            this.stages = {
+                IF: null,
+                ID: null,
+                EX: null,
+                MEM: null,
+                WB: null
+            };
+        }
+
+        isDone() {
+            return this.fetchStopped &&
+                !this.stages.IF &&
+                !this.stages.ID &&
+                !this.stages.EX &&
+                !this.stages.MEM &&
+                !this.stages.WB;
+        }
+
+        makeEntry(address) {
+            const listing = this.listingByAddress.get(address);
+            if (!listing) {
+                throw new RuntimeError(address, "pipeline fetch reached non-instruction memory");
+            }
+            return {
+                address,
+                listing,
+                words: listing.words,
+                reads: instructionReads(listing.words),
+                writes: instructionWrites(listing.words),
+                executed: false,
+                bubble: false
+            };
+        }
+
+        fetchEntry() {
+            if (this.fetchStopped) {
+                return null;
+            }
+            if (this.fetchPc < 0 || this.fetchPc > MEMORY_SIZE - INSTR_WIDTH || this.fetchPc % INSTR_WIDTH !== 0) {
+                throw new RuntimeError(this.fetchPc, "pipeline PC out of bounds or misaligned");
+            }
+            if (!this.listingByAddress.has(this.fetchPc)) {
+                this.fetchStopped = true;
+                return null;
+            }
+            const entry = this.makeEntry(this.fetchPc);
+            this.fetchPc += INSTR_WIDTH;
+            return entry;
+        }
+
+        hasDataHazard() {
+            const id = this.stages.ID;
+            if (!id || id.bubble || id.reads.length === 0) {
+                return false;
+            }
+            const pendingWrites = [
+                ...(this.stages.EX && !this.stages.EX.bubble ? this.stages.EX.writes : []),
+                ...(this.stages.MEM && !this.stages.MEM.bubble ? this.stages.MEM.writes : [])
+            ];
+            return id.reads.some((reg) => pendingWrites.includes(reg));
+        }
+
+        executeExStage() {
+            const ex = this.stages.EX;
+            if (!ex || ex.bubble || ex.executed) {
+                return null;
+            }
+            if (this.cpu.pc !== ex.address) {
+                throw new RuntimeError(ex.address, `pipeline/reference PC mismatch, expected ${this.cpu.pc}`);
+            }
+            const event = this.cpu.step();
+            ex.executed = true;
+            const sequentialNext = ex.address + INSTR_WIDTH;
+            const controlChangedPc = event.nextPc !== sequentialNext && !event.halted;
+            if (controlChangedPc) {
+                const flushed = Number(Boolean(this.stages.IF)) + Number(Boolean(this.stages.ID));
+                this.flushes += flushed;
+                this.stages.IF = null;
+                this.stages.ID = null;
+                this.fetchPc = event.nextPc;
+            }
+            if (event.halted) {
+                this.fetchStopped = true;
+                this.stages.IF = null;
+                this.stages.ID = null;
+            }
+            return { event, controlChangedPc };
+        }
+
+        stepCycle() {
+            if (this.isDone()) {
+                return this.history.at(-1) || null;
+            }
+
+            this.cycle += 1;
+            const execution = this.executeExStage();
+            const hazard = !execution?.controlChangedPc && !this.fetchStopped && this.hasDataHazard();
+            if (hazard) {
+                this.stalls += 1;
+            }
+
+            const next = {
+                WB: this.stages.MEM,
+                MEM: this.stages.EX,
+                EX: hazard ? { bubble: true } : this.stages.ID,
+                ID: hazard ? this.stages.ID : this.stages.IF,
+                IF: hazard ? this.stages.IF : this.fetchEntry()
+            };
+            this.stages = next;
+
+            const row = {
+                cycle: this.cycle,
+                IF: stageLabel(this.stages.IF),
+                ID: stageLabel(this.stages.ID),
+                EX: stageLabel(this.stages.EX),
+                MEM: stageLabel(this.stages.MEM),
+                WB: stageLabel(this.stages.WB),
+                event: execution?.event || null,
+                stalled: hazard,
+                flushed: execution?.controlChangedPc || false,
+                pc: this.cpu.pc,
+                halted: this.isDone()
+            };
+            this.history.push(row);
+            return row;
+        }
+
+        runUntilDone(maxCycles = EXECUTION_LIMIT) {
+            const rows = [];
+            while (!this.isDone() && rows.length < maxCycles) {
+                rows.push(this.stepCycle());
+            }
+            return rows;
+        }
+
+        stats() {
+            const retired = this.cpu.steps;
+            return {
+                cycles: this.cycle,
+                retired,
+                stalls: this.stalls,
+                flushes: this.flushes,
+                cpi: retired > 0 ? this.cycle / retired : 0
+            };
+        }
+    }
+
     function diffState(beforeRegisters, afterRegisters, beforeMemory, afterMemory) {
         const registers = [];
         const memory = [];
@@ -797,6 +1029,7 @@ RET
         AssemblyError,
         RuntimeError,
         Cpu,
+        PipelineCpu,
         assemble,
         formatInstruction,
         opcodeName

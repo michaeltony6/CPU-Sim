@@ -175,6 +175,7 @@ python3 -m http.server 8000
 ```
 
 Then visit `http://localhost:8000`. The debugger can assemble source, step instructions, run until halt, pause at breakpoints, highlight changed registers/memory, show trace output, and export `.bin` machine code.
+It also includes a five-stage pipeline mode that shows IF, ID, EX, MEM, and WB cycle by cycle with data-hazard stalls, branch flushes, retired instruction count, and CPI.
 
 ![Interactive CPU Debugger](docs/images/web-debugger.png)
 
@@ -292,6 +293,7 @@ The Verilog implementation includes simulation-time fault checks for invalid reg
 - If the Verilog CPU halts with `fault=1`, inspect the decoded instruction fields for an invalid register number, memory address, branch target, or PC.
 - In the web debugger, use breakpoints on loop labels and watch the highlighted register/memory cells after each step.
 - For stack programs, initialize or preserve `R7` as the stack pointer. It starts at `256`, and the first `PUSH` or `CALL` writes to `MEM[255]`.
+- In pipeline mode, use **Pipeline Cycle** to advance one hardware cycle at a time. Yellow rows indicate data stalls; red rows indicate branch/control flushes.
 
 ## Known Limitations
 
@@ -299,6 +301,7 @@ The Verilog implementation includes simulation-time fault checks for invalid reg
 - The Verilog memory loader and trace output are simulation conveniences, not a complete FPGA memory-initialization flow.
 - The C simulator and Verilog CPU share behavior for the supported ISA, but the C simulator remains the reference model for detailed error messages.
 - The web debugger is a static educational tool and mirrors the ISA behavior in JavaScript; it is not a replacement for the C reference simulator.
+- The pipeline visualizer is a performance/debugging model for the web debugger, not a separate pipelined Verilog implementation.
 
 ## Resume Bullets
 
@@ -307,3 +310,4 @@ The Verilog implementation includes simulation-time fault checks for invalid reg
 - Designed and tested a matching Verilog CPU datapath with ALU, register file, control unit, shared memory, fault detection, and GTKWave waveform generation.
 - Created an interactive browser debugger with assembly editing, breakpoints, step/run controls, trace output, state-change highlighting, and machine-code export.
 - Expanded the CPU with bitwise logic, shifts, immediate arithmetic, register-indirect memory, signed branches, stack operations, subroutine calls, status flags, and memory-mapped output.
+- Added a five-stage pipeline visualization mode with IF/ID/EX/MEM/WB stages, data stalls, branch flushes, retired instruction counts, and CPI metrics.

@@ -13,6 +13,7 @@ This repository includes:
 - Automated C and Verilog regression tests for core programs and invalid-input handling.
 - An interactive browser debugger for assembling, stepping, tracing, and visualizing CPU state.
 - An expanded ISA with bitwise operations, shifts, register-indirect memory, signed branches, stack operations, subroutine calls, flags, and memory-mapped output.
+- A five-stage pipeline visualizer with cycle-by-cycle IF/ID/EX/MEM/WB state, data stalls, branch flushes, and CPI metrics.
 
 The main project lives in [`custom-risc-cpu/`](custom-risc-cpu/).
 
@@ -155,6 +156,7 @@ The project includes both CLI and visual debugging:
 - Browser-based stepping, breakpoints, register/memory highlighting, trace logging, and `.bin` export.
 - Flags for zero, negative, and carry/overflow-style arithmetic status.
 - `MEM[255]` memory-mapped output for simple I/O-style demos.
+- Five-stage pipeline visualization with hazard stalls, branch flushes, retired-instruction count, and CPI.
 
 These features make it easier to debug PC updates, branch logic, loop behavior, and memory/register state.
 
@@ -165,6 +167,7 @@ These features make it easier to debug PC updates, branch logic, loop behavior, 
 - Designed and tested a matching Verilog CPU implementation with ALU, register file, control unit, memory module, fault detection, and waveform-generating Icarus Verilog testbench.
 - Built an interactive browser debugger that assembles code, steps execution, manages breakpoints, highlights CPU state changes, and exports machine code.
 - Expanded the ISA with stack/subroutine support, register-indirect memory, signed branches, bitwise operations, shifts, condition flags, and memory-mapped output.
+- Added a five-stage pipeline debugger with cycle-by-cycle stage visualization, data hazard stalls, branch flush tracking, and CPI statistics.
 
 ## Full Documentation
 

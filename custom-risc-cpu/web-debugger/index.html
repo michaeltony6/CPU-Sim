@@ -28,6 +28,8 @@
                     <button id="stepBtn">Step</button>
                     <button id="runBtn">Run</button>
                     <button id="pauseBtn">Pause</button>
+                    <button id="pipelineCycleBtn">Pipeline Cycle</button>
+                    <button id="pipelineRunBtn">Run Pipeline</button>
                     <button id="exportBtn">Export .bin</button>
                 </div>
             </div>
@@ -65,6 +67,35 @@
                         </tr>
                     </thead>
                     <tbody id="listingBody"></tbody>
+                </table>
+            </div>
+
+            <div class="section-title pipeline-heading">
+                <h2>5-Stage Pipeline</h2>
+                <span>IF → ID → EX → MEM → WB with stalls and flushes</span>
+            </div>
+            <div class="pipeline-stats">
+                <div><span>Cycles</span><strong id="pipeCyclesValue">--</strong></div>
+                <div><span>Retired</span><strong id="pipeRetiredValue">--</strong></div>
+                <div><span>Stalls</span><strong id="pipeStallsValue">--</strong></div>
+                <div><span>Flushes</span><strong id="pipeFlushesValue">--</strong></div>
+                <div><span>CPI</span><strong id="pipeCpiValue">--</strong></div>
+            </div>
+            <div id="pipelineStages" class="pipeline-stages"></div>
+            <div class="pipeline-history-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Cycle</th>
+                            <th>IF</th>
+                            <th>ID</th>
+                            <th>EX</th>
+                            <th>MEM</th>
+                            <th>WB</th>
+                            <th>Note</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pipelineHistoryBody"></tbody>
                 </table>
             </div>
         </section>
