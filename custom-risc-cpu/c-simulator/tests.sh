@@ -48,6 +48,11 @@ check_result add_two_numbers 12
 check_result sum_1_to_10 55
 check_result fibonacci_10_terms 88
 check_result isa_v2_demo 20
+check_result multiply_repeated_add 42
+check_result factorial_5 120
+check_result max_array 42
+check_result memory_copy 44
+check_result subroutine_square 81
 
 ./assembler programs/isa_v2_demo.asm "$tmp_dir/isa_v2_demo.bin" >/dev/null
 ./disassembler "$tmp_dir/isa_v2_demo.bin" > "$tmp_dir/isa_v2_demo.disasm"
@@ -60,14 +65,23 @@ grep 'mmio_outputs: 1' "$tmp_dir/isa_v2_demo.profile" >/dev/null
 grep 'CALL' "$tmp_dir/isa_v2_demo.profile" >/dev/null
 
 cat > "$tmp_dir/debugger.commands" <<'CMDS'
+watch 250
+watch 255
 step 4
 regs
+history 4
+break 60
+run
+clear
+next
 run
 mem 250 1
 quit
 CMDS
 ./debugger "$tmp_dir/isa_v2_demo.bin" "$tmp_dir/debugger.commands" > "$tmp_dir/debugger.out"
 grep 'R2=8' "$tmp_dir/debugger.out" >/dev/null
+grep 'watch MEM\[250\]' "$tmp_dir/debugger.out" >/dev/null
+grep 'step-over stopped at PC' "$tmp_dir/debugger.out" >/dev/null
 grep 'MEM\[250\]=20' "$tmp_dir/debugger.out" >/dev/null
 
 expect_assembler_fail bad_register 'MOVI R8, 1' 'invalid register'

@@ -13,12 +13,17 @@ make >/dev/null
 
 cat > "$TMP_DIR/debugger.commands" <<'CMDS'
 disasm 0 12
+watch 250
+watch 255
 step 4
 regs
-break 100
+history 4
+break 60
 run
 regs
 clear
+next
+history 8
 run
 mem 250 6
 quit
@@ -28,4 +33,3 @@ printf 'Running scripted debugger session for isa_v2_demo.asm...\n\n'
 ./debugger "$TMP_DIR/isa_v2_demo.bin" "$TMP_DIR/debugger.commands"
 
 printf '\nExpected finish: MEM[250]=20 and MEM[255]=20.\n'
-

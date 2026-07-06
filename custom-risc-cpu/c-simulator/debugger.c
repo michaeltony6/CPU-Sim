@@ -12,6 +12,8 @@
 #define EXECUTION_LIMIT 10000
 #define STACK_POINTER_REG 7
 #define MAX_BREAKPOINTS 64
+#define MAX_WATCHPOINTS 64
+#define MAX_HISTORY 128
 #define COMMAND_LEN 256
 
 typedef struct {
@@ -28,6 +30,14 @@ typedef struct {
     bool halted;
     Flags flags;
 } Machine;
+
+typedef struct {
+    int step;
+    int pc;
+    int reg;
+    int old_value;
+    int new_value;
+} HistoryEvent;
 
 static bool parse_int_token(const char *token, int *value)
 {
@@ -356,6 +366,98 @@ static bool has_breakpoint(const int breakpoints[MAX_BREAKPOINTS], int count, in
     return false;
 }
 
+static bool has_watchpoint(const int watchpoints[MAX_WATCHPOINTS], int count, int addr)
+{
+    for (int i = 0; i < count; i++) {
+        if (watchpoints[i] == addr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void add_history(HistoryEvent history[MAX_HISTORY],
+                        int *history_count,
+                        int *history_next,
+                        int step,
+                        int pc,
+                        int reg,
+                        int old_value,
+                        int new_value)
+{
+    history[*history_next].step = step;
+    history[*history_next].pc = pc;
+    history[*history_next].reg = reg;
+    history[*history_next].old_value = old_value;
+    history[*history_next].new_value = new_value;
+    *history_next = (*history_next + 1) % MAX_HISTORY;
+    if (*history_count < MAX_HISTORY) {
+        (*history_count)++;
+    }
+}
+
+static bool step_with_debug(Machine *machine,
+                            bool verbose,
+                            const int watchpoints[MAX_WATCHPOINTS],
+                            int watchpoint_count,
+                            HistoryEvent history[MAX_HISTORY],
+                            int *history_count,
+                            int *history_next)
+{
+    int old_registers[NUM_REGISTERS];
+    int watched_old[MAX_WATCHPOINTS];
+    int old_step = machine->steps;
+    int old_pc = machine->pc;
+
+    for (int i = 0; i < NUM_REGISTERS; i++) {
+        old_registers[i] = machine->registers[i];
+    }
+    for (int i = 0; i < watchpoint_count; i++) {
+        watched_old[i] = valid_address(watchpoints[i]) ? machine->memory[watchpoints[i]] : 0;
+    }
+
+    if (!step_machine(machine, verbose)) {
+        return false;
+    }
+
+    for (int i = 0; i < NUM_REGISTERS; i++) {
+        if (old_registers[i] != machine->registers[i]) {
+            add_history(history, history_count, history_next, old_step, old_pc,
+                        i, old_registers[i], machine->registers[i]);
+        }
+    }
+    for (int i = 0; i < watchpoint_count; i++) {
+        int addr = watchpoints[i];
+        if (valid_address(addr) && watched_old[i] != machine->memory[addr]) {
+            printf("watch MEM[%d]: %d -> %d at step %d\n",
+                   addr, watched_old[i], machine->memory[addr], old_step);
+        }
+    }
+    return true;
+}
+
+static void print_history(const HistoryEvent history[MAX_HISTORY], int history_count, int history_next, int limit)
+{
+    if (history_count == 0) {
+        puts("register history is empty");
+        return;
+    }
+    if (limit <= 0 || limit > history_count) {
+        limit = history_count;
+    }
+
+    int start = (history_next - limit + MAX_HISTORY) % MAX_HISTORY;
+    for (int i = 0; i < limit; i++) {
+        int index = (start + i) % MAX_HISTORY;
+        printf("step=%d pc=%d R%d: %d -> %d\n",
+               history[index].step,
+               history[index].pc,
+               history[index].reg,
+               history[index].old_value,
+               history[index].new_value);
+    }
+}
+
 static void print_help(void)
 {
     puts("Commands:");
@@ -364,13 +466,26 @@ static void print_help(void)
     puts("  mem <addr> [count]   print memory words");
     puts("  disasm [pc] [count]  disassemble memory");
     puts("  step [count]         execute one or more instructions");
+    puts("  next                 step over CALL, otherwise step once");
     puts("  run                  run until halt or breakpoint");
     puts("  break <pc>           add breakpoint");
+    puts("  watch <addr>         print when memory address changes");
+    puts("  unwatch <addr>       remove memory watchpoint");
+    puts("  watchpoints          list memory watchpoints");
+    puts("  history [count]      show recent register writes");
     puts("  clear                remove all breakpoints");
     puts("  quit                 exit debugger");
 }
 
-static bool process_command(Machine *machine, char *line, int breakpoints[MAX_BREAKPOINTS], int *breakpoint_count)
+static bool process_command(Machine *machine,
+                            char *line,
+                            int breakpoints[MAX_BREAKPOINTS],
+                            int *breakpoint_count,
+                            int watchpoints[MAX_WATCHPOINTS],
+                            int *watchpoint_count,
+                            HistoryEvent history[MAX_HISTORY],
+                            int *history_count,
+                            int *history_next)
 {
     char *cmd = strtok(line, " \t\r\n");
     if (cmd == NULL) {
@@ -416,9 +531,26 @@ static bool process_command(Machine *machine, char *line, int breakpoints[MAX_BR
             return true;
         }
         for (int i = 0; i < count && !machine->halted; i++) {
-            if (!step_machine(machine, true)) {
+            if (!step_with_debug(machine, true, watchpoints, *watchpoint_count,
+                                 history, history_count, history_next)) {
                 return false;
             }
+        }
+    } else if (strcmp(cmd, "next") == 0) {
+        int opcode = valid_target(machine->pc) ? machine->memory[machine->pc] : OP_HALT;
+        int return_pc = machine->pc + INSTR_WIDTH;
+        if (!step_with_debug(machine, true, watchpoints, *watchpoint_count,
+                             history, history_count, history_next)) {
+            return false;
+        }
+        if (opcode == OP_CALL) {
+            while (!machine->halted && machine->pc != return_pc) {
+                if (!step_with_debug(machine, false, watchpoints, *watchpoint_count,
+                                     history, history_count, history_next)) {
+                    return false;
+                }
+            }
+            printf("step-over stopped at PC %d\n", machine->pc);
         }
     } else if (strcmp(cmd, "run") == 0) {
         while (!machine->halted) {
@@ -426,7 +558,8 @@ static bool process_command(Machine *machine, char *line, int breakpoints[MAX_BR
                 printf("hit breakpoint at PC %d\n", machine->pc);
                 break;
             }
-            if (!step_machine(machine, false)) {
+            if (!step_with_debug(machine, false, watchpoints, *watchpoint_count,
+                                 history, history_count, history_next)) {
                 return false;
             }
         }
@@ -445,6 +578,53 @@ static bool process_command(Machine *machine, char *line, int breakpoints[MAX_BR
             (*breakpoint_count)++;
             printf("breakpoint added at PC %d\n", pc);
         }
+    } else if (strcmp(cmd, "watch") == 0) {
+        char *addr_text = strtok(NULL, " \t\r\n");
+        int addr = 0;
+        if (addr_text == NULL || !parse_int_token(addr_text, &addr) || !valid_address(addr)) {
+            puts("usage: watch <memory-address>");
+            return true;
+        }
+        if (has_watchpoint(watchpoints, *watchpoint_count, addr)) {
+            printf("watchpoint already exists at MEM[%d]\n", addr);
+            return true;
+        }
+        if (*watchpoint_count < MAX_WATCHPOINTS) {
+            watchpoints[*watchpoint_count] = addr;
+            (*watchpoint_count)++;
+            printf("watchpoint added at MEM[%d]\n", addr);
+        }
+    } else if (strcmp(cmd, "unwatch") == 0) {
+        char *addr_text = strtok(NULL, " \t\r\n");
+        int addr = 0;
+        if (addr_text == NULL || !parse_int_token(addr_text, &addr) || !valid_address(addr)) {
+            puts("usage: unwatch <memory-address>");
+            return true;
+        }
+        for (int i = 0; i < *watchpoint_count; i++) {
+            if (watchpoints[i] == addr) {
+                watchpoints[i] = watchpoints[*watchpoint_count - 1];
+                (*watchpoint_count)--;
+                printf("watchpoint removed at MEM[%d]\n", addr);
+                return true;
+            }
+        }
+        printf("no watchpoint at MEM[%d]\n", addr);
+    } else if (strcmp(cmd, "watchpoints") == 0) {
+        if (*watchpoint_count == 0) {
+            puts("no watchpoints");
+        }
+        for (int i = 0; i < *watchpoint_count; i++) {
+            printf("MEM[%d]=%d\n", watchpoints[i], machine->memory[watchpoints[i]]);
+        }
+    } else if (strcmp(cmd, "history") == 0) {
+        char *count_text = strtok(NULL, " \t\r\n");
+        int count = 16;
+        if (count_text != NULL && !parse_int_token(count_text, &count)) {
+            puts("usage: history [count]");
+            return true;
+        }
+        print_history(history, *history_count, *history_next, count);
     } else if (strcmp(cmd, "clear") == 0) {
         *breakpoint_count = 0;
         puts("breakpoints cleared");
@@ -486,6 +666,11 @@ int main(int argc, char **argv)
 
     int breakpoints[MAX_BREAKPOINTS];
     int breakpoint_count = 0;
+    int watchpoints[MAX_WATCHPOINTS];
+    int watchpoint_count = 0;
+    HistoryEvent history[MAX_HISTORY];
+    int history_count = 0;
+    int history_next = 0;
     char line[COMMAND_LEN];
     puts("Custom RISC CPU debugger ready. Type 'help' for commands.");
     while (true) {
@@ -496,7 +681,9 @@ int main(int argc, char **argv)
         if (fgets(line, sizeof(line), input) == NULL) {
             break;
         }
-        if (!process_command(&machine, line, breakpoints, &breakpoint_count)) {
+        if (!process_command(&machine, line, breakpoints, &breakpoint_count,
+                             watchpoints, &watchpoint_count,
+                             history, &history_count, &history_next)) {
             break;
         }
     }

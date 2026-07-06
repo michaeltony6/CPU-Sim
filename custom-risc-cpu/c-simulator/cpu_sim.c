@@ -125,23 +125,61 @@ static bool pop_value(const int memory[MEMORY_SIZE], int registers[NUM_REGISTERS
 
 static void print_usage(const char *program_name)
 {
-    fprintf(stderr, "usage: %s program.bin [--trace]\n", program_name);
+    fprintf(stderr, "usage: %s program.bin [--trace] [--dump-state state.txt]\n", program_name);
+}
+
+static bool write_state_file(const char *path,
+                             const int memory[MEMORY_SIZE],
+                             const int registers[NUM_REGISTERS],
+                             int pc,
+                             int steps,
+                             Flags flags)
+{
+    FILE *file = fopen(path, "w");
+    if (file == NULL) {
+        fprintf(stderr, "error: could not write state file '%s'\n", path);
+        return false;
+    }
+
+    fprintf(file, "STEPS %d\n", steps);
+    fprintf(file, "PC %d\n", pc);
+    fprintf(file, "FLAGS %d %d %d\n", flags.zero, flags.negative, flags.carry);
+    for (int i = 0; i < NUM_REGISTERS; i++) {
+        fprintf(file, "REG %d %d\n", i, registers[i]);
+    }
+    for (int i = 0; i < MEMORY_SIZE; i++) {
+        fprintf(file, "MEM %d %d\n", i, memory[i]);
+    }
+
+    if (fclose(file) != 0) {
+        fprintf(stderr, "error: failed to close state file '%s'\n", path);
+        return false;
+    }
+    return true;
 }
 
 int main(int argc, char **argv)
 {
-    if (argc < 2 || argc > 3) {
+    if (argc < 2 || argc > 5) {
         print_usage(argv[0]);
         return 1;
     }
 
     bool trace = false;
-    if (argc == 3) {
-        if (strcmp(argv[2], "--trace") != 0) {
+    const char *state_path = NULL;
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "--trace") == 0) {
+            trace = true;
+        } else if (strcmp(argv[i], "--dump-state") == 0) {
+            if (i + 1 >= argc) {
+                print_usage(argv[0]);
+                return 1;
+            }
+            state_path = argv[++i];
+        } else {
             print_usage(argv[0]);
             return 1;
         }
-        trace = true;
     }
 
     int memory[MEMORY_SIZE];
@@ -324,5 +362,8 @@ int main(int argc, char **argv)
     registers_dump(registers);
     printf("Flags:\n  Z = %d\n  N = %d\n  C = %d\n", flags.zero, flags.negative, flags.carry);
     memory_dump_nonzero(memory);
+    if (state_path != NULL && !write_state_file(state_path, memory, registers, pc, steps, flags)) {
+        return 1;
+    }
     return 0;
 }

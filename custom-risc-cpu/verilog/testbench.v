@@ -5,6 +5,7 @@
 module testbench;
     parameter PROGRAM_FILE = "programs/add_two_numbers.mem";
     parameter EXPECTED_MEM250 = 12;
+    parameter MAX_CYCLES = 500;
 
     reg clk;
     reg reset;
@@ -47,7 +48,7 @@ module testbench;
                 end
                 $finish;
             end
-            if (cycles > 100) begin
+            if (cycles > MAX_CYCLES) begin
                 $display("error: simulation cycle limit reached");
                 $finish;
             end

@@ -15,7 +15,8 @@ test-shell:
 	./scripts/language_mix.sh >/dev/null
 	./scripts/run_all_examples.sh >/dev/null
 	./scripts/debug_isa_v2.sh >/dev/null
+	./scripts/golden_compare.sh >/dev/null
 
 clean:
 	$(MAKE) -C c-simulator clean
-	find verilog -maxdepth 1 \( -name 'cpu_tb' -o -name 'cpu_tb_*' -o -name 'fault_tb' -o -name 'hazard_tb' -o -name 'dump.vcd' -o -name 'fault_dump.vcd' -o -name 'hazard_dump.vcd' \) -delete
+	find verilog -maxdepth 1 \( -name 'cpu_tb' -o -name 'cpu_tb_*' -o -name 'pipeline_tb_*' -o -name 'state_tb_*' -o -name 'fault_tb' -o -name 'hazard_tb' -o -name 'dump.vcd' -o -name 'fault_dump.vcd' -o -name 'hazard_dump.vcd' -o -name 'pipeline_dump.vcd' \) -delete

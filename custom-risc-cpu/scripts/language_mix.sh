@@ -16,10 +16,12 @@ find "$ROOT_DIR" -type f \
     ! -path '*/docs/images/*' \
     ! -name '*.o' \
     ! -name '*.bin' \
-    ! -name 'dump.vcd' \
-    ! -name 'fault_dump.vcd' \
+    ! -name '*dump.vcd' \
     ! -name 'cpu_tb*' \
+    ! -name 'pipeline_tb*' \
+    ! -name 'state_tb*' \
     ! -name 'fault_tb' \
+    ! -name 'hazard_tb' \
     ! -name 'assembler' \
     ! -name 'cpu_sim' \
     ! -name 'debugger' \

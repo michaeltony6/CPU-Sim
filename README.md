@@ -10,9 +10,12 @@ This repository includes:
 - Native C profiling and terminal-debugging tools.
 - Example assembly programs for arithmetic, loops, and Fibonacci logic.
 - A matching Verilog implementation of the same instruction set.
+- A real five-stage pipelined Verilog CPU with forwarding, stalls, flushes, and CPI reporting.
 - Standalone Verilog pipeline-control modules for hazards, forwarding, stalls, and flushes.
 - An Icarus Verilog testbench that generates a GTKWave-compatible VCD file.
 - Automated C and Verilog regression tests for core programs and invalid-input handling.
+- C-vs-Verilog golden-model comparison tests.
+- A GitHub Actions workflow template for fresh-clone validation.
 - Shell scripts for full example runs, scripted debugging demos, and source language reporting.
 - An interactive browser debugger for assembling, stepping, tracing, and visualizing CPU state.
 - An expanded ISA with bitwise operations, shifts, register-indirect memory, signed branches, stack operations, subroutine calls, flags, and memory-mapped output.
@@ -30,6 +33,7 @@ This project is designed to show practical systems knowledge in a compact, revie
 - Assembly parsing and label resolution.
 - CPU simulation in C.
 - Hardware modeling in Verilog.
+- Pipeline hazards, forwarding, stalls, branch flushes, and golden-model validation.
 
 It is intentionally small enough to understand quickly, but complete enough to discuss in an interview or include in a resume portfolio.
 
@@ -113,6 +117,7 @@ Run another example manually:
 cd custom-risc-cpu/c-simulator
 ./assembler programs/sum_1_to_10.asm programs/sum_1_to_10.bin
 ./cpu_sim programs/sum_1_to_10.bin --trace
+./cpu_sim programs/sum_1_to_10.bin --dump-state state.txt
 ./disassembler programs/sum_1_to_10.bin
 ./profiler programs/sum_1_to_10.bin
 ./debugger programs/sum_1_to_10.bin
@@ -124,6 +129,7 @@ Run the full shell automation layer:
 cd custom-risc-cpu
 ./scripts/run_all_examples.sh
 ./scripts/debug_isa_v2.sh
+./scripts/golden_compare.sh
 ./scripts/language_mix.sh
 ```
 
@@ -135,6 +141,11 @@ Expected example results:
 | `sum_1_to_10.asm` | `MEM[250] = 55` |
 | `fibonacci_10_terms.asm` | `MEM[250] = 88` |
 | `isa_v2_demo.asm` | `MEM[250] = 20` |
+| `multiply_repeated_add.asm` | `MEM[250] = 42` |
+| `factorial_5.asm` | `MEM[250] = 120` |
+| `max_array.asm` | `MEM[250] = 42` |
+| `memory_copy.asm` | `MEM[250] = 44` |
+| `subroutine_square.asm` | `MEM[250] = 81` |
 
 ## Verilog Simulation
 
@@ -149,7 +160,15 @@ gtkwave dump.vcd
 
 The testbench loads `programs/add_two_numbers.mem`, executes the CPU, prints trace information, and writes `dump.vcd` for waveform inspection.
 
-The Verilog folder also includes a standalone hazard/forwarding unit and reusable pipeline register. Their testbench checks load-use stalls, forwarding priority, branch flushes, and register stall/flush behavior.
+The Verilog folder also includes a real five-stage pipelined CPU, a standalone hazard/forwarding unit, and a reusable pipeline register. Tests check load-use stalls, forwarding priority, branch flushes, pipeline CPI reporting, and register stall/flush behavior.
+
+Run the pipelined CPU:
+
+```sh
+iverilog -o pipeline_tb pipeline_testbench.v pipeline_cpu.v hazard_unit.v
+vvp pipeline_tb
+gtkwave pipeline_dump.vcd
+```
 
 Run the Verilog regression tests:
 
@@ -174,8 +193,10 @@ The project includes both CLI and visual debugging:
 - `MEM[255]` memory-mapped output for simple I/O-style demos.
 - Five-stage pipeline visualization with hazard stalls, branch flushes, retired-instruction count, and CPI.
 - Native C profiler summaries for opcode mix, branches, calls, stack depth, and memory/register traffic.
-- Terminal debugger commands for stepping, breakpoints, disassembly, register dumps, and memory inspection.
+- Terminal debugger commands for stepping, step-over, breakpoints, watchpoints, register-write history, disassembly, register dumps, and memory inspection.
 - Shell-driven demos that can be run from a fresh clone.
+- C golden-state export and C-vs-Verilog comparison scripts.
+- A GitHub Actions workflow template that installs Icarus Verilog and runs the full regression suite.
 
 These features make it easier to debug PC updates, branch logic, loop behavior, and memory/register state.
 
@@ -188,7 +209,8 @@ These features make it easier to debug PC updates, branch logic, loop behavior, 
 - Expanded the ISA with stack/subroutine support, register-indirect memory, signed branches, bitwise operations, shifts, condition flags, and memory-mapped output.
 - Added a five-stage pipeline debugger with cycle-by-cycle stage visualization, data hazard stalls, branch flush tracking, and CPI statistics.
 - Added C profiling/debugging tools, Verilog hazard-control modules, and shell automation to make the project easier to demo and validate.
+- Implemented a real five-stage Verilog pipeline with IF/ID/EX/MEM/WB registers, forwarding, load-use stalls, branch flushes, CPI reporting, and golden-model tests against the C simulator.
 
 ## Full Documentation
 
-See [`custom-risc-cpu/README.md`](custom-risc-cpu/README.md) for the complete architecture notes, file layout, build instructions, assembler details, simulator behavior, Verilog mapping, and sample output.
+See [`custom-risc-cpu/README.md`](custom-risc-cpu/README.md), [`custom-risc-cpu/docs/isa-spec.md`](custom-risc-cpu/docs/isa-spec.md), [`custom-risc-cpu/docs/fpga-notes.md`](custom-risc-cpu/docs/fpga-notes.md), and [`custom-risc-cpu/docs/ci-workflow.yml`](custom-risc-cpu/docs/ci-workflow.yml) for the complete architecture notes, diagrams, FPGA bring-up notes, CI template, build instructions, assembler details, simulator behavior, Verilog mapping, and sample output.

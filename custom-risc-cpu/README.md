@@ -4,7 +4,9 @@ This is a portfolio-ready computer architecture project that implements a small 
 
 - A C fetch-decode-execute simulator.
 - A lightweight two-pass assembler for `.asm` programs.
-- A matching Verilog CPU implementation with a testbench and GTKWave waveform output.
+- A matching single-cycle Verilog CPU implementation.
+- A five-stage pipelined Verilog CPU with forwarding, stalls, flushes, and CPI reporting.
+- Golden-model tests that compare Verilog behavior against the C simulator.
 
 The goal is to show the full path from assembly source code to machine code to CPU execution, while keeping the code readable enough for learning, debugging, and interviews.
 
@@ -14,6 +16,10 @@ The goal is to show the full path from assembly source code to machine code to C
 custom-risc-cpu/
   README.md
   Makefile
+  docs/
+    isa-spec.md
+    fpga-notes.md
+    ci-workflow.yml
   c-simulator/
     instructions.h
     registers.h
@@ -32,9 +38,15 @@ custom-risc-cpu/
       sum_1_to_10.asm
       fibonacci_10_terms.asm
       isa_v2_demo.asm
+      multiply_repeated_add.asm
+      factorial_5.asm
+      max_array.asm
+      memory_copy.asm
+      subroutine_square.asm
   scripts/
     run_all_examples.sh
     debug_isa_v2.sh
+    golden_compare.sh
     language_mix.sh
   web-debugger/
     index.html
@@ -53,13 +65,21 @@ custom-risc-cpu/
     fault_testbench.v
     hazard_unit.v
     hazard_unit_testbench.v
+    pipeline_cpu.v
     pipeline_register.v
+    pipeline_testbench.v
+    state_testbench.v
     tests.sh
     programs/
       add_two_numbers.mem
       sum_1_to_10.mem
       fibonacci_10_terms.mem
       isa_v2_demo.mem
+      multiply_repeated_add.mem
+      factorial_5.mem
+      max_array.mem
+      memory_copy.mem
+      subroutine_square.mem
       invalid_register.mem
 ```
 
@@ -134,6 +154,7 @@ Safety features include:
 - Word-aligned jump target validation.
 - A 10,000-step execution limit to prevent accidental infinite loops.
 - Optional instruction tracing with `--trace`.
+- Optional final-state export with `--dump-state state.txt` for golden-model testing.
 - Strict `.bin` parsing so malformed machine-code files are rejected instead of partially loaded.
 - Zero, negative, and carry/overflow-style status flags updated by value-producing instructions.
 - Stack/subroutine support with `PUSH`, `POP`, `CALL`, and `RET`.
@@ -159,7 +180,7 @@ The disassembler reads newline-separated integer `.bin` files and prints readabl
 
 The native profiler runs a program and reports execution metrics such as opcode counts, register reads/writes, memory reads/writes, branch behavior, stack depth, call/return activity, MMIO output count, and final `MEM[250]`.
 
-The native debugger supports both interactive and scripted sessions with commands for stepping, running, breakpoints, register dumps, memory inspection, and disassembly windows. This gives the project a terminal workflow that complements the browser debugger.
+The native debugger supports both interactive and scripted sessions with commands for stepping, step-over, running, breakpoints, memory watchpoints, register-write history, register dumps, memory inspection, and disassembly windows. This gives the project a terminal workflow that complements the browser debugger.
 
 Example assembly:
 
@@ -203,6 +224,7 @@ Assemble and run manually:
 ```sh
 ./assembler programs/sum_1_to_10.asm programs/sum_1_to_10.bin
 ./cpu_sim programs/sum_1_to_10.bin --trace
+./cpu_sim programs/sum_1_to_10.bin --dump-state state.txt
 ./disassembler programs/sum_1_to_10.bin
 ./profiler programs/sum_1_to_10.bin
 ./debugger programs/sum_1_to_10.bin
@@ -225,6 +247,12 @@ Check the local source language mix:
 
 ```sh
 ./scripts/language_mix.sh
+```
+
+Compare C golden-model output against Verilog:
+
+```sh
+./scripts/golden_compare.sh
 ```
 
 Clean generated files:
@@ -284,12 +312,18 @@ Expected program results:
 | `sum_1_to_10.asm` | `MEM[250] = 55` |
 | `fibonacci_10_terms.asm` | `MEM[250] = 88` |
 | `isa_v2_demo.asm` | `MEM[250] = 20` |
+| `multiply_repeated_add.asm` | `MEM[250] = 42` |
+| `factorial_5.asm` | `MEM[250] = 120` |
+| `max_array.asm` | `MEM[250] = 42` |
+| `memory_copy.asm` | `MEM[250] = 44` |
+| `subroutine_square.asm` | `MEM[250] = 81` |
 
 ## Verilog Implementation
 
-The Verilog CPU maps directly to the C simulator:
+The Verilog implementation has two CPU cores:
 
-- `cpu.v` implements the top-level program counter and datapath.
+- `cpu.v` implements a single-cycle CPU that supports the full ISA.
+- `pipeline_cpu.v` implements a five-stage IF/ID/EX/MEM/WB CPU for the scalar, branch, and memory subset.
 - `control.v` decodes opcodes into control signals.
 - `alu.v` implements add, subtract, and pass-through operations.
 - `register_file.v` implements eight 32-bit registers.
@@ -299,6 +333,8 @@ The Verilog CPU maps directly to the C simulator:
 - `hazard_unit.v` models data forwarding, load-use stalls, and branch flush control for a pipelined version.
 - `pipeline_register.v` provides reusable valid/data pipeline storage with stall and flush controls.
 - `hazard_unit_testbench.v` verifies forwarding priority, load-use stalls, branch flushes, and pipeline-register behavior.
+- `pipeline_testbench.v` verifies the pipelined core and prints cycles, retired instructions, stalls, flushes, and CPI.
+- `state_testbench.v` dumps single-cycle Verilog final state for C-vs-Verilog golden checks.
 
 Run with Icarus Verilog:
 
@@ -311,6 +347,14 @@ gtkwave dump.vcd
 
 The Verilog testbench prints the PC, instruction fields, register read values, and `MEM[250]` during simulation. It also stops after a cycle limit to catch broken branch logic.
 
+Run the pipelined CPU:
+
+```sh
+iverilog -o pipeline_tb pipeline_testbench.v pipeline_cpu.v hazard_unit.v
+vvp pipeline_tb
+gtkwave pipeline_dump.vcd
+```
+
 Run the Verilog regression tests:
 
 ```sh
@@ -320,7 +364,20 @@ cd custom-risc-cpu/verilog
 
 The Verilog implementation includes simulation-time fault checks for invalid register numbers, invalid memory addresses, invalid branch targets, and invalid PC values. The `$fopen`, `$fscanf`, `$display`, and VCD dump features are intended for simulation and debugging rather than direct synthesis.
 
-The hazard unit is a standalone hardware module that maps directly to the browser pipeline visualizer. It is not wired into the single-cycle CPU top level yet, but it documents and tests the control policy needed for a future pipelined Verilog CPU.
+The pipelined CPU uses the hazard unit to stall on load-use hazards, forward ALU/writeback values, and flush younger instructions after taken branches or jumps. The pipeline currently supports the scalar, branch, and memory subset of the ISA; stack/subroutine instructions remain supported by the C simulator and single-cycle Verilog core.
+
+## Continuous Integration Template
+
+`docs/ci-workflow.yml` contains a GitHub Actions workflow that runs the full regression suite on pushes and pull requests:
+
+- C simulator, assembler, profiler, debugger, and example-program tests.
+- Browser CPU-core tests.
+- Single-cycle Verilog tests.
+- Pipelined Verilog tests.
+- Hazard-unit tests.
+- C-vs-Verilog golden-model comparison.
+
+To activate it, copy that file to `.github/workflows/ci.yml` using a GitHub token with the `workflow` scope enabled.
 
 ## Debugging Notes
 
@@ -331,7 +388,8 @@ The hazard unit is a standalone hardware module that maps directly to the browse
 - If a program hangs, check label placement, branch condition registers, and whether the loop counter changes before the branch target repeats.
 - If the Verilog CPU halts with `fault=1`, inspect the decoded instruction fields for an invalid register number, memory address, branch target, or PC.
 - Use `./profiler program.bin` when you want opcode counts, branch statistics, stack usage, and memory/register traffic without reading every trace line.
-- Use `./debugger program.bin commands.txt` to make repeatable terminal debugging sessions for demos or regression checks.
+- Use `./debugger program.bin commands.txt` to make repeatable terminal debugging sessions for demos or regression checks. The CLI debugger includes memory watchpoints, register-write history, and `next` for stepping over `CALL`.
+- Use `./scripts/golden_compare.sh` when changing Verilog datapath behavior; it catches mismatches against the C reference model.
 - In the web debugger, use breakpoints on loop labels and watch the highlighted register/memory cells after each step.
 - For stack programs, initialize or preserve `R7` as the stack pointer. It starts at `256`, and the first `PUSH` or `CALL` writes to `MEM[255]`.
 - In pipeline mode, use **Pipeline Cycle** to advance one hardware cycle at a time. Yellow rows indicate data stalls; red rows indicate branch/control flushes.
@@ -342,7 +400,8 @@ The hazard unit is a standalone hardware module that maps directly to the browse
 - The Verilog memory loader and trace output are simulation conveniences, not a complete FPGA memory-initialization flow.
 - The C simulator and Verilog CPU share behavior for the supported ISA, but the C simulator remains the reference model for detailed error messages.
 - The web debugger is a static educational tool and mirrors the ISA behavior in JavaScript; it is not a replacement for the C reference simulator.
-- The pipeline visualizer and standalone Verilog hazard unit show the pipeline control policy, but the top-level Verilog CPU remains single-cycle.
+- The pipelined Verilog CPU currently covers the scalar, branch, and memory subset. Stack/subroutine support is still single-cycle/C-reference only.
+- The FPGA notes describe the bring-up path, but the repo does not include a board-specific constraints file yet.
 
 ## Resume Bullets
 
@@ -353,3 +412,4 @@ The hazard unit is a standalone hardware module that maps directly to the browse
 - Expanded the CPU with bitwise logic, shifts, immediate arithmetic, register-indirect memory, signed branches, stack operations, subroutine calls, status flags, and memory-mapped output.
 - Added a five-stage pipeline visualization mode with IF/ID/EX/MEM/WB stages, data stalls, branch flushes, retired instruction counts, and CPI metrics.
 - Added native C profiling/debugging tools, shell automation scripts, and Verilog pipeline-control modules with regression tests.
+- Implemented a real five-stage pipelined Verilog CPU with forwarding, load-use stalls, branch flushes, CPI metrics, and C golden-model regression checks.

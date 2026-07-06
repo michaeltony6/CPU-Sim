@@ -1,0 +1,27 @@
+name: Custom RISC CPU CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install simulation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+
+      - name: Run full regression suite
+        working-directory: custom-risc-cpu
+        run: make test
+
+      - name: Run golden model comparison
+        working-directory: custom-risc-cpu
+        run: ./scripts/golden_compare.sh
+
