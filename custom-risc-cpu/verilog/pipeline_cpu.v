@@ -258,6 +258,7 @@ module pipeline_cpu #(
         (id_ex_opcode == OP_LOADR) ? ex_value1_forwarded :
         (id_ex_opcode == OP_STORER) ? ex_value2_forwarded :
         32'd0;
+    wire ex_loadr_range_fault = id_ex_valid && id_ex_opcode == OP_LOADR && ex_data_addr > 32'd255;
 
     wire raw_stall;
     wire unused_flush;
@@ -300,6 +301,7 @@ module pipeline_cpu #(
     wire stall_pipeline = raw_stall && !ex_control_flush && !halt_seen && !halted;
     wire [31:0] mem_stage_read_data = (ex_mem_data_addr <= 32'd255) ? mem[ex_mem_data_addr] : 32'd0;
     wire [31:0] mem_stage_write_data = ex_mem_mem_to_reg ? mem_stage_read_data : ex_mem_alu_result;
+    wire ex_storer_range_fault = id_ex_valid && id_ex_opcode == OP_STORER && ex_data_addr > 32'd255;
 
     always @(posedge clk or posedge reset) begin
         if (reset) begin
@@ -342,7 +344,7 @@ module pipeline_cpu #(
                 end
             end
 
-            if (if_id_valid && !id_decode_valid) begin
+            if (if_id_valid && !id_decode_valid && !ex_control_flush) begin
                 $display("pipeline fault: unsupported or invalid instruction at PC %0d opcode=%0d", if_id_pc, if_id_opcode);
                 fault <= 1'b1;
                 halt_seen <= 1'b1;
@@ -388,7 +390,7 @@ module pipeline_cpu #(
             end else begin
                 if (!halt_seen) begin
                     pc <= pc + INSTR_WIDTH;
-                    if_id_valid <= (pc <= 32'd252);
+                    if_id_valid <= 1'b1;
                     if_id_pc <= pc;
                     if_id_opcode <= fetch_opcode;
                     if_id_a <= fetch_a;
@@ -398,7 +400,15 @@ module pipeline_cpu #(
                     if_id_valid <= 1'b0;
                 end
 
-                if (!halt_seen && if_id_valid && id_decode_valid) begin
+                // Sequential fetch ran past PC 252: precise PC fault. This branch runs
+                // only when no older taken branch/JMP/HALT is flushing the slot.
+                if (!halt_seen && if_id_valid && if_id_pc > 32'd252) begin
+                    fault <= 1'b1;
+                    halt_seen <= 1'b1;
+                    if_id_valid <= 1'b0;
+                end
+
+                if (!halt_seen && if_id_valid && id_decode_valid && if_id_pc <= 32'd252) begin
                     id_ex_valid <= if_id_valid;
                     id_ex_pc <= if_id_pc;
                     id_ex_opcode <= if_id_opcode;
@@ -431,8 +441,26 @@ module pipeline_cpu #(
                 end
             end
 
+            // Precise LOADR range fault: drop the LOADR and everything younger.
+            if (ex_loadr_range_fault) begin
+                fault <= 1'b1;
+                halt_seen <= 1'b1;
+                if_id_valid <= 1'b0;
+                id_ex_valid <= 1'b0;
+                ex_mem_valid <= 1'b0;
+            end
+
             if (halt_seen && !if_id_valid && !id_ex_valid && !ex_mem_valid && !mem_wb_valid) begin
                 halted <= 1'b1;
+            end
+
+            // Precise STORER range fault: drop the STORER and everything younger.
+            if (ex_storer_range_fault) begin
+                fault <= 1'b1;
+                halt_seen <= 1'b1;
+                if_id_valid <= 1'b0;
+                id_ex_valid <= 1'b0;
+                ex_mem_valid <= 1'b0;
             end
         end
     end
