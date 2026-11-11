@@ -104,9 +104,11 @@ module cpu #(
     wire valid_jump_target = instr_a <= 32'd252 && instr_a[1:0] == 2'b00;
     wire valid_branch_target = instr_c <= 32'd252 && instr_c[1:0] == 2'b00;
     wire valid_pc = pc <= 32'd252 && pc[1:0] == 2'b00;
+    wire valid_opcode = opcode <= 32'd23;
 
     wire invalid_instruction =
         !valid_pc ||
+        !valid_opcode ||
         ((is_load || is_movi || is_pop) && !valid_rd) ||
         ((is_store || is_push) && !valid_rd) ||
         ((is_load || is_store) && !valid_immediate_addr) ||
@@ -122,7 +124,7 @@ module cpu #(
 
     memory #(.PROGRAM_FILE(PROGRAM_FILE)) data_memory(
         .clk(clk),
-        .write_enable(mem_write_control && !halted && !invalid_instruction),
+        .write_enable(mem_write_control && !reset && !halted && !invalid_instruction),
         .instr_addr(pc),
         .data_addr(data_addr),
         .write_data(mem_write_data),
